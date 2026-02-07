@@ -129,7 +129,34 @@ Base URL local: `http://localhost:3000`
 ```
 - Respuesta esperada: `201` con `{ appointment: {...} }`, `400` en error.
 
-Nota: actualmente este route expone `POST` (no `GET`) en el código actual.
+### PATCH `/api/appointments/{id}`
+- URL ejemplo: http://localhost:3000/api/appointments/APPOINTMENT_UUID
+- Acción: actualiza una cita existente (estado y/o notas), confiando en RLS para permisos.
+- Comportamiento adicional actual:
+- Si `status = "cancelled"`, el endpoint también setea:
+  - `cancelled_at = now()`
+  - `cancellation_reason = "other"` (el detalle libre queda en `notes`)
+- Body JSON (ejemplos):
+```json
+{
+  "status": "confirmed"
+}
+```
+```json
+{
+  "notes": "Cliente pidió reprogramar si hay demora"
+}
+```
+```json
+{
+  "status": "cancelled",
+  "notes": "Cancelado por solicitud del cliente"
+}
+```
+- Estados permitidos: `pending`, `confirmed`, `cancelled`, `completed`, `no_show`.
+- Respuesta esperada: `200` con `{ appointment: {...} }`, `400` en validación/error de DB, `401` no autorizado.
+
+Nota: actualmente `/api/appointments` expone `POST` y `/api/appointments/{id}` expone `PATCH`.
 
 ## Availability
 
@@ -145,5 +172,5 @@ Nota: actualmente este route expone `POST` (no `GET`) en el código actual.
 - Negocios: `GET/POST`.
 - Servicios: `GET/POST`.
 - Staff: `GET/POST`.
-- Citas: `POST`.
+- Citas: `POST`, `PATCH /api/appointments/{id}`.
 - Disponibilidad: `GET`.
