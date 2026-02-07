@@ -1,323 +1,231 @@
 'use client';
 
 import * as React from 'react';
-import { format } from 'date-fns';
+import { format, isToday, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
-import {
-  HiOutlineMagnifyingGlass,
-  HiOutlineFunnel,
-  HiOutlineEllipsisVertical,
-  HiOutlineCheck,
-  HiOutlineXMark,
-  HiOutlineCalendarDays,
-  HiOutlineClock,
-  HiOutlineArchiveBox,
-  HiOutlineExclamationCircle,
-} from 'react-icons/hi2';
-import { Card, CardContent } from '@/presentation/components/ui/card';
-import { Button } from '@/presentation/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/presentation/components/ui/card';
 import { Badge } from '@/presentation/components/ui/badge';
-import { Avatar } from '@/presentation/components/ui/avatar';
-import { Input } from '@/presentation/components/ui/input';
-import { cn } from '@/lib/utils';
 
-// Navigation tabs
-const tabs = [
-  { id: 'today', label: 'Hoy', icon: HiOutlineCalendarDays },
-  { id: 'pending', label: 'Pendientes', icon: HiOutlineClock, badge: 2 },
-  { id: 'upcoming', label: 'Próximas', icon: HiOutlineExclamationCircle },
-  { id: 'history', label: 'Historial', icon: HiOutlineArchiveBox },
-];
-
-type AppointmentStatus = 'pending' | 'confirmed' | 'completed' | 'cancelled' | 'no_show';
-
-interface Appointment {
+type Business = {
   id: string;
-  client: {
-    name: string;
-    email: string;
-    phone: string;
-  };
-  service: {
-    name: string;
-    duration: number;
-    price: number;
-  };
-  staff: {
-    name: string;
-    color: string;
-  };
-  date: Date;
-  time: string;
-  status: AppointmentStatus;
-  notes?: string;
-}
-
-// Mock data
-const mockAppointments: Appointment[] = [
-  {
-    id: '1',
-    client: { name: 'Carlos Rodríguez', email: 'carlos@email.com', phone: '+54 11 1234 5678' },
-    service: { name: 'Corte + Barba', duration: 45, price: 3500 },
-    staff: { name: 'Juan Pérez', color: '#8b5cf6' },
-    date: new Date(),
-    time: '09:00',
-    status: 'confirmed',
-  },
-  {
-    id: '2',
-    client: { name: 'María García', email: 'maria@email.com', phone: '+54 11 2345 6789' },
-    service: { name: 'Coloración', duration: 90, price: 5500 },
-    staff: { name: 'Ana López', color: '#06b6d4' },
-    date: new Date(),
-    time: '10:00',
-    status: 'pending',
-  },
-  {
-    id: '3',
-    client: { name: 'Pedro Martínez', email: 'pedro@email.com', phone: '+54 11 3456 7890' },
-    service: { name: 'Corte Clásico', duration: 30, price: 2500 },
-    staff: { name: 'Juan Pérez', color: '#8b5cf6' },
-    date: new Date(),
-    time: '11:00',
-    status: 'completed',
-  },
-  {
-    id: '4',
-    client: { name: 'Laura Sánchez', email: 'laura@email.com', phone: '+54 11 4567 8901' },
-    service: { name: 'Tratamiento Capilar', duration: 45, price: 2800 },
-    staff: { name: 'Ana López', color: '#06b6d4' },
-    date: new Date(),
-    time: '14:00',
-    status: 'cancelled',
-  },
-  {
-    id: '5',
-    client: { name: 'Diego Fernández', email: 'diego@email.com', phone: '+54 11 5678 9012' },
-    service: { name: 'Barba Completa', duration: 25, price: 1800 },
-    staff: { name: 'Carlos Ruiz', color: '#10b981' },
-    date: new Date(),
-    time: '16:00',
-    status: 'no_show',
-  },
-];
-
-const statusConfig: Record<
-  AppointmentStatus,
-  { label: string; variant: 'default' | 'success' | 'warning' | 'danger' | 'secondary' }
-> = {
-  pending: { label: 'Pendiente', variant: 'warning' },
-  confirmed: { label: 'Confirmado', variant: 'success' },
-  completed: { label: 'Completado', variant: 'secondary' },
-  cancelled: { label: 'Cancelado', variant: 'danger' },
-  no_show: { label: 'No asistió', variant: 'danger' },
+  name: string;
 };
 
-export default function AppointmentsPage() {
-  const [searchQuery, setSearchQuery] = React.useState('');
-  const [selectedStatus, setSelectedStatus] = React.useState<AppointmentStatus | 'all'>('all');
-  const [activeTab, setActiveTab] = React.useState('today');
+type AppointmentApi = {
+  id: string;
+  scheduled_at: string;
+  status: string;
+  client_name?: string | null;
+  client_full_name?: string | null;
+  service_name?: string | null;
+  staff_name?: string | null;
+  staff_full_name?: string | null;
+  client?: { name?: string | null } | null;
+  service?: { name?: string | null } | null;
+  staff?: { name?: string | null } | null;
+};
 
-  const filteredAppointments = mockAppointments.filter((apt) => {
-    const matchesSearch =
-      apt.client.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      apt.service.name.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus = selectedStatus === 'all' || apt.status === selectedStatus;
-    return matchesSearch && matchesStatus;
-  });
+function getStatusBadgeVariant(status: string): 'success' | 'warning' | 'danger' | 'secondary' | 'info' {
+  if (status === 'confirmed' || status === 'completed') return 'success';
+  if (status === 'pending') return 'warning';
+  if (status === 'cancelled' || status === 'no_show') return 'danger';
+  if (status === 'in_progress') return 'info';
+  return 'secondary';
+}
 
-  const stats = {
-    total: mockAppointments.length,
-    pending: mockAppointments.filter((a) => a.status === 'pending').length,
-    confirmed: mockAppointments.filter((a) => a.status === 'confirmed').length,
-    completed: mockAppointments.filter((a) => a.status === 'completed').length,
+function getStatusLabel(status: string): string {
+  const map: Record<string, string> = {
+    pending: 'Pendiente',
+    confirmed: 'Confirmado',
+    in_progress: 'En progreso',
+    completed: 'Completado',
+    cancelled: 'Cancelado',
+    no_show: 'No asistió',
   };
+  return map[status] ?? status;
+}
+
+function getClientName(appointment: AppointmentApi): string {
+  return appointment.client_full_name ?? appointment.client_name ?? appointment.client?.name ?? 'Cliente sin nombre';
+}
+
+function getServiceName(appointment: AppointmentApi): string {
+  return appointment.service_name ?? appointment.service?.name ?? 'Servicio';
+}
+
+function getStaffName(appointment: AppointmentApi): string {
+  return appointment.staff_full_name ?? appointment.staff_name ?? appointment.staff?.name ?? 'Profesional';
+}
+
+function formatFriendlyDate(isoDate: string): string {
+  const parsedDate = parseISO(isoDate);
+  if (isToday(parsedDate)) {
+    return `Hoy a las ${format(parsedDate, 'HH:mm')}`;
+  }
+  return format(parsedDate, "EEE d MMM 'a las' HH:mm", { locale: es });
+}
+
+export default function AppointmentsPage() {
+  const [businesses, setBusinesses] = React.useState<Business[]>([]);
+  const [selectedBusinessId, setSelectedBusinessId] = React.useState<string>('');
+  const [appointments, setAppointments] = React.useState<AppointmentApi[]>([]);
+  const [isLoading, setIsLoading] = React.useState(true);
+  const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    const loadBusinesses = async () => {
+      setIsLoading(true);
+      setErrorMessage(null);
+
+      try {
+        const response = await fetch('/api/businesses', { cache: 'no-store' });
+        const result = (await response.json()) as { businesses?: Business[]; error?: string };
+
+        if (!response.ok) {
+          setErrorMessage(result.error ?? 'No se pudieron cargar los negocios');
+          return;
+        }
+
+        const fetchedBusinesses = result.businesses ?? [];
+        setBusinesses(fetchedBusinesses);
+        setSelectedBusinessId(fetchedBusinesses[0]?.id ?? '');
+      } catch {
+        setErrorMessage('Error de conexión. Intenta nuevamente.');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    void loadBusinesses();
+  }, []);
+
+  React.useEffect(() => {
+    const loadAppointments = async () => {
+      if (!selectedBusinessId) {
+        setAppointments([]);
+        return;
+      }
+
+      setIsLoading(true);
+      setErrorMessage(null);
+
+      try {
+        const response = await fetch(`/api/appointments?businessId=${selectedBusinessId}`, {
+          cache: 'no-store',
+        });
+        const result = (await response.json()) as
+          | { appointments?: AppointmentApi[]; error?: string }
+          | AppointmentApi[];
+
+        if (!response.ok) {
+          const error = Array.isArray(result) ? undefined : result.error;
+          setErrorMessage(error ?? 'No se pudieron cargar las citas');
+          setAppointments([]);
+          return;
+        }
+
+        const fetchedAppointments = Array.isArray(result) ? result : result.appointments ?? [];
+        const sortedAppointments = [...fetchedAppointments].sort(
+          (a, b) =>
+            new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime()
+        );
+
+        setAppointments(sortedAppointments);
+      } catch {
+        setErrorMessage('Error de conexión. Intenta nuevamente.');
+        setAppointments([]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    void loadAppointments();
+  }, [selectedBusinessId]);
+
+  const todayAppointments = React.useMemo(
+    () => appointments.filter((appointment) => isToday(parseISO(appointment.scheduled_at))),
+    [appointments]
+  );
 
   return (
     <div className="animate-in space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-surface-900 dark:text-surface-50">
-            Citas
-          </h1>
-          <p className="mt-1 text-surface-500">
-            Gestiona todas las reservas de tu negocio
-          </p>
+      <div>
+        <h1 className="text-2xl font-bold text-surface-900 dark:text-surface-50">Citas</h1>
+        <p className="mt-1 text-surface-500">Próximas citas conectadas al backend real.</p>
+      </div>
+
+      <div className="max-w-sm">
+        <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-surface-500">
+          Negocio
+        </label>
+        <select
+          value={selectedBusinessId}
+          onChange={(e) => setSelectedBusinessId(e.target.value)}
+          className="w-full rounded-xl border border-surface-300 bg-white px-4 py-2.5 text-sm text-surface-900 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500 dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"
+        >
+          {businesses.length === 0 ? (
+            <option value="">Sin negocios</option>
+          ) : (
+            businesses.map((business) => (
+              <option key={business.id} value={business.id}>
+                {business.name}
+              </option>
+            ))
+          )}
+        </select>
+      </div>
+
+      {errorMessage && (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {errorMessage}
         </div>
-        <Button variant="glow" leftIcon={<HiOutlineCalendarDays className="h-5 w-5" />}>
-          Nueva Cita
-        </Button>
-      </div>
+      )}
 
-      {/* Navigation Tabs */}
-      <div className="flex gap-2 overflow-x-auto pb-2">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={cn(
-              'flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-all whitespace-nowrap',
-              activeTab === tab.id
-                ? 'bg-primary-600 text-white shadow-glow'
-                : 'bg-surface-100 text-surface-600 hover:bg-surface-200 dark:bg-surface-800 dark:text-surface-400 dark:hover:bg-surface-700'
-            )}
-          >
-            <tab.icon className="h-4 w-4" />
-            {tab.label}
-            {tab.badge && (
-              <span className="ml-1 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1.5 text-xs text-white">
-                {tab.badge}
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
-
-      {/* Stats */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {[
-          { label: 'Total Hoy', value: stats.total, color: 'text-surface-900 dark:text-surface-50' },
-          { label: 'Pendientes', value: stats.pending, color: 'text-yellow-600' },
-          { label: 'Confirmadas', value: stats.confirmed, color: 'text-green-600' },
-          { label: 'Completadas', value: stats.completed, color: 'text-blue-600' },
-        ].map((stat) => (
-          <Card key={stat.label} variant="elevated">
-            <CardContent className="py-4">
-              <p className="text-sm text-surface-500">{stat.label}</p>
-              <p className={cn('mt-1 text-3xl font-bold', stat.color)}>{stat.value}</p>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      {/* Filters */}
       <Card variant="elevated">
-        <CardContent className="py-4">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-            <div className="flex-1">
-              <Input
-                placeholder="Buscar por cliente o servicio..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                leftIcon={<HiOutlineMagnifyingGlass className="h-5 w-5" />}
-              />
+        <CardHeader>
+          <CardTitle>Próximas Citas</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <p className="py-8 text-center text-surface-500">Cargando citas...</p>
+          ) : todayAppointments.length === 0 ? (
+            <div className="rounded-xl border border-surface-200 bg-surface-50 px-4 py-8 text-center text-surface-600 dark:border-surface-800 dark:bg-surface-900 dark:text-surface-300">
+              Aún no tienes reservas para hoy. ¡Comparte tu link de reserva!
             </div>
-            <div className="flex items-center gap-2">
-              <HiOutlineFunnel className="h-5 w-5 text-surface-400" />
-              <select
-                value={selectedStatus}
-                onChange={(e) => setSelectedStatus(e.target.value as AppointmentStatus | 'all')}
-                className="rounded-xl border border-surface-200 bg-white px-4 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500 dark:border-surface-700 dark:bg-surface-900"
-              >
-                <option value="all">Todos los estados</option>
-                <option value="pending">Pendientes</option>
-                <option value="confirmed">Confirmados</option>
-                <option value="completed">Completados</option>
-                <option value="cancelled">Cancelados</option>
-                <option value="no_show">No asistió</option>
-              </select>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Appointments list */}
-      <Card variant="elevated" padding="none">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-surface-200 bg-surface-50 text-left dark:border-surface-800 dark:bg-surface-900">
-                <th className="px-6 py-4 text-sm font-medium text-surface-500">Cliente</th>
-                <th className="px-6 py-4 text-sm font-medium text-surface-500">Servicio</th>
-                <th className="px-6 py-4 text-sm font-medium text-surface-500">Profesional</th>
-                <th className="px-6 py-4 text-sm font-medium text-surface-500">Fecha/Hora</th>
-                <th className="px-6 py-4 text-sm font-medium text-surface-500">Estado</th>
-                <th className="px-6 py-4 text-sm font-medium text-surface-500">Precio</th>
-                <th className="px-6 py-4 text-sm font-medium text-surface-500"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredAppointments.map((apt) => (
-                <tr
-                  key={apt.id}
-                  className="border-b border-surface-100 transition-colors hover:bg-surface-50 dark:border-surface-800/50 dark:hover:bg-surface-900/50"
-                >
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                      <Avatar name={apt.client.name} size="sm" />
-                      <div>
-                        <p className="font-medium text-surface-900 dark:text-surface-50">
-                          {apt.client.name}
-                        </p>
-                        <p className="text-sm text-surface-500">{apt.client.phone}</p>
-                      </div>
+          ) : (
+            <div className="space-y-3">
+              {todayAppointments.map((appointment) => {
+                const date = parseISO(appointment.scheduled_at);
+                return (
+                  <div
+                    key={appointment.id}
+                    className="flex flex-col gap-3 rounded-xl border border-surface-200 px-4 py-3 dark:border-surface-800 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-surface-900 dark:text-surface-50">
+                        {formatFriendlyDate(appointment.scheduled_at)}
+                      </p>
+                      <p className="truncate text-sm text-surface-600 dark:text-surface-300">
+                        {getClientName(appointment)} · {getServiceName(appointment)} ·{' '}
+                        {getStaffName(appointment)}
+                      </p>
                     </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <p className="font-medium text-surface-900 dark:text-surface-50">
-                      {apt.service.name}
-                    </p>
-                    <p className="text-sm text-surface-500">{apt.service.duration} min</p>
-                  </td>
-                  <td className="px-6 py-4">
+
                     <div className="flex items-center gap-2">
-                      <div
-                        className="h-3 w-3 rounded-full"
-                        style={{ backgroundColor: apt.staff.color }}
-                      />
-                      <span className="text-surface-900 dark:text-surface-50">
-                        {apt.staff.name}
+                      <span className="text-sm font-medium text-surface-700 dark:text-surface-200">
+                        {format(date, 'HH:mm')} hs
                       </span>
+                      <Badge variant={getStatusBadgeVariant(appointment.status)} dot>
+                        {getStatusLabel(appointment.status)}
+                      </Badge>
                     </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <p className="font-medium text-surface-900 dark:text-surface-50">
-                      {format(apt.date, 'd MMM yyyy', { locale: es })}
-                    </p>
-                    <p className="text-sm text-surface-500">{apt.time}</p>
-                  </td>
-                  <td className="px-6 py-4">
-                    <Badge variant={statusConfig[apt.status].variant}>
-                      {statusConfig[apt.status].label}
-                    </Badge>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="font-semibold text-surface-900 dark:text-surface-50">
-                      ${apt.service.price.toLocaleString()}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-1">
-                      {apt.status === 'pending' && (
-                        <>
-                          <Button variant="ghost" size="icon-sm" className="text-green-600">
-                            <HiOutlineCheck className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon-sm" className="text-red-600">
-                            <HiOutlineXMark className="h-4 w-4" />
-                          </Button>
-                        </>
-                      )}
-                      <Button variant="ghost" size="icon-sm">
-                        <HiOutlineEllipsisVertical className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        {filteredAppointments.length === 0 && (
-          <div className="py-12 text-center">
-            <HiOutlineCalendarDays className="mx-auto h-12 w-12 text-surface-300" />
-            <p className="mt-4 text-surface-500">No se encontraron citas</p>
-          </div>
-        )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
       </Card>
     </div>
   );
 }
-

@@ -2,7 +2,6 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import {
   HiOutlineEnvelope,
   HiOutlineLockClosed,
@@ -16,9 +15,10 @@ import { Button } from '@/presentation/components/ui/button';
 import { Input } from '@/presentation/components/ui/input';
 
 export default function RegisterPage() {
-  const router = useRouter();
   const [showPassword, setShowPassword] = React.useState(false);
   const [isLoading, setIsLoading] = React.useState(false);
+  const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = React.useState<string | null>(null);
   const [formData, setFormData] = React.useState({
     firstName: '',
     lastName: '',
@@ -31,14 +31,49 @@ export default function RegisterPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setErrorMessage(null);
+    setSuccessMessage(null);
+
+    if (formData.password !== formData.confirmPassword) {
+      setErrorMessage('Las contraseñas no coinciden');
+      return;
+    }
+
     setIsLoading(true);
 
-    // Simulate registration - replace with actual Supabase auth
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    try {
+      const response = await fetch('/api/auth/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: formData.email,
+          password: formData.password,
+          first_name: formData.firstName,
+          last_name: formData.lastName,
+        }),
+      });
 
-    // Redirect to admin dashboard
-    router.push('/admin');
-    setIsLoading(false);
+      const result = (await response.json()) as { error?: string };
+      if (!response.ok) {
+        setErrorMessage(result.error ?? 'No se pudo crear la cuenta');
+        return;
+      }
+
+      setSuccessMessage('Cuenta creada. Revisa tu email para confirmar');
+      setFormData({
+        firstName: '',
+        lastName: '',
+        email: '',
+        phone: '',
+        password: '',
+        confirmPassword: '',
+        acceptTerms: false,
+      });
+    } catch {
+      setErrorMessage('Error de conexión. Intenta nuevamente.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -71,6 +106,17 @@ export default function RegisterPage() {
 
       {/* Form */}
       <form onSubmit={handleSubmit} className="mt-8 space-y-5">
+        {errorMessage && (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {errorMessage}
+          </div>
+        )}
+        {successMessage && (
+          <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+            {successMessage}
+          </div>
+        )}
+
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label
@@ -264,6 +310,7 @@ export default function RegisterPage() {
           size="lg"
           variant="glow"
           isLoading={isLoading}
+          disabled={isLoading}
         >
           Crear Cuenta
         </Button>
@@ -294,4 +341,3 @@ export default function RegisterPage() {
     </div>
   );
 }
-

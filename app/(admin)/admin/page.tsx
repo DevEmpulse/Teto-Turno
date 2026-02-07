@@ -1,29 +1,40 @@
-import type { Metadata } from 'next/types';
+'use client';
+
+import * as React from 'react';
 import Link from 'next/link';
 import {
-  HiOutlineCalendarDays,
-  HiOutlineBanknotes,
-  HiOutlineUsers,
-  HiOutlineArrowTrendingUp,
-  HiOutlineCalendar,
+  HiOutlineBuildingStorefront,
   HiOutlineScissors,
+  HiOutlineUsers,
+  HiOutlineArrowRight,
+  HiOutlineCalendar,
   HiOutlineChartBar,
   HiOutlinePlus,
-  HiOutlineArrowRight,
 } from 'react-icons/hi2';
 import { Card, CardContent, CardHeader, CardTitle } from '@/presentation/components/ui/card';
-import { Badge } from '@/presentation/components/ui/badge';
 import { Avatar } from '@/presentation/components/ui/avatar';
 
-// Quick navigation items
+type Business = {
+  id: string;
+  name: string;
+  slug: string;
+};
+
+type Service = {
+  id: string;
+  name: string;
+  status: 'active' | 'inactive' | 'archived';
+};
+
+type Staff = {
+  id: string;
+  full_name: string;
+  email: string;
+  title: string | null;
+  status: 'active' | 'inactive' | 'on_leave';
+};
+
 const quickActions = [
-  {
-    title: 'Nueva Cita',
-    description: 'Agendar una cita manualmente',
-    href: '/admin/appointments',
-    icon: HiOutlinePlus,
-    color: 'bg-primary-600 text-white',
-  },
   {
     title: 'Calendario',
     description: 'Ver agenda del día',
@@ -39,6 +50,13 @@ const quickActions = [
     color: 'bg-green-600 text-white',
   },
   {
+    title: 'Staff',
+    description: 'Gestionar profesionales',
+    href: '/admin/staff',
+    icon: HiOutlineUsers,
+    color: 'bg-primary-600 text-white',
+  },
+  {
     title: 'Reportes',
     description: 'Ver estadísticas',
     href: '/admin/reports',
@@ -47,106 +65,84 @@ const quickActions = [
   },
 ];
 
-export const metadata: Metadata = {
-  title: 'Dashboard',
-  description: 'Panel de control de tu negocio',
-};
-
-// Mock data for demonstration
-const stats = [
-  {
-    title: 'Citas Hoy',
-    value: '12',
-    change: '+2 vs ayer',
-    trend: 'up',
-    icon: HiOutlineCalendarDays,
-    color: 'text-primary-600',
-    bgColor: 'bg-primary-100 dark:bg-primary-900/30',
-  },
-  {
-    title: 'Ingresos del Mes',
-    value: '$245,000',
-    change: '+15% vs mes anterior',
-    trend: 'up',
-    icon: HiOutlineBanknotes,
-    color: 'text-green-600',
-    bgColor: 'bg-green-100 dark:bg-green-900/30',
-  },
-  {
-    title: 'Clientes Nuevos',
-    value: '34',
-    change: '+8 esta semana',
-    trend: 'up',
-    icon: HiOutlineUsers,
-    color: 'text-accent-600',
-    bgColor: 'bg-accent-100 dark:bg-accent-900/30',
-  },
-  {
-    title: 'Tasa de Ocupación',
-    value: '87%',
-    change: '+5% vs promedio',
-    trend: 'up',
-    icon: HiOutlineArrowTrendingUp,
-    color: 'text-orange-600',
-    bgColor: 'bg-orange-100 dark:bg-orange-900/30',
-  },
-];
-
-const upcomingAppointments = [
-  {
-    id: '1',
-    client: 'Carlos Rodríguez',
-    service: 'Corte + Barba',
-    time: '10:00',
-    staff: 'Juan Pérez',
-    status: 'confirmed',
-  },
-  {
-    id: '2',
-    client: 'María García',
-    service: 'Coloración',
-    time: '10:30',
-    staff: 'Ana López',
-    status: 'pending',
-  },
-  {
-    id: '3',
-    client: 'Pedro Martínez',
-    service: 'Corte Clásico',
-    time: '11:00',
-    staff: 'Juan Pérez',
-    status: 'confirmed',
-  },
-  {
-    id: '4',
-    client: 'Laura Sánchez',
-    service: 'Tratamiento Capilar',
-    time: '11:30',
-    staff: 'Ana López',
-    status: 'confirmed',
-  },
-];
-
-const topStaff = [
-  { name: 'Juan Pérez', appointments: 45, revenue: 125000 },
-  { name: 'Ana López', appointments: 38, revenue: 98000 },
-  { name: 'Carlos Ruiz', appointments: 32, revenue: 85000 },
-];
-
 export default function AdminDashboardPage() {
+  const [isLoading, setIsLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+  const [businesses, setBusinesses] = React.useState<Business[]>([]);
+  const [services, setServices] = React.useState<Service[]>([]);
+  const [staff, setStaff] = React.useState<Staff[]>([]);
+
+  React.useEffect(() => {
+    const load = async () => {
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        const businessesRes = await fetch('/api/businesses', { cache: 'no-store' });
+        const businessesJson = (await businessesRes.json()) as { businesses?: Business[]; error?: string };
+
+        if (!businessesRes.ok) {
+          setError(businessesJson.error ?? 'No se pudieron cargar los negocios');
+          setIsLoading(false);
+          return;
+        }
+
+        const fetchedBusinesses = businessesJson.businesses ?? [];
+        setBusinesses(fetchedBusinesses);
+
+        const businessId = fetchedBusinesses[0]?.id;
+        if (!businessId) {
+          setServices([]);
+          setStaff([]);
+          setIsLoading(false);
+          return;
+        }
+
+        const [servicesRes, staffRes] = await Promise.all([
+          fetch(`/api/services?businessId=${businessId}`, { cache: 'no-store' }),
+          fetch(`/api/staff?businessId=${businessId}`, { cache: 'no-store' }),
+        ]);
+
+        const servicesJson = (await servicesRes.json()) as { services?: Service[]; error?: string };
+        const staffJson = (await staffRes.json()) as { staff?: Staff[]; error?: string };
+
+        if (!servicesRes.ok) {
+          setError(servicesJson.error ?? 'No se pudieron cargar los servicios');
+        } else {
+          setServices(servicesJson.services ?? []);
+        }
+
+        if (!staffRes.ok) {
+          setError((prev) => prev ?? staffJson.error ?? 'No se pudo cargar el staff');
+        } else {
+          setStaff(staffJson.staff ?? []);
+        }
+      } catch {
+        setError('Error de conexión. Intenta nuevamente.');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    void load();
+  }, []);
+
+  const activeServices = services.filter((service) => service.status === 'active').length;
+  const activeStaff = staff.filter((person) => person.status === 'active').length;
+
   return (
     <div className="space-y-6 animate-in">
-      {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-surface-900 dark:text-surface-50">
-          ¡Buen día! 👋
-        </h1>
-        <p className="mt-1 text-surface-500">
-          Aquí está el resumen de tu negocio para hoy, Lunes 5 de Enero.
-        </p>
+        <h1 className="text-2xl font-bold text-surface-900 dark:text-surface-50">Dashboard</h1>
+        <p className="mt-1 text-surface-500">Resumen de datos conectados a tus APIs.</p>
       </div>
 
-      {/* Quick Access */}
+      {error && (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {quickActions.map((action) => (
           <Link key={action.title} href={action.href}>
@@ -156,9 +152,7 @@ export default function AdminDashboardPage() {
                   <action.icon className="h-6 w-6" />
                 </div>
                 <div className="flex-1">
-                  <p className="font-semibold text-surface-900 dark:text-surface-50">
-                    {action.title}
-                  </p>
+                  <p className="font-semibold text-surface-900 dark:text-surface-50">{action.title}</p>
                   <p className="text-sm text-surface-500">{action.description}</p>
                 </div>
                 <HiOutlineArrowRight className="h-5 w-5 text-surface-400 transition-transform group-hover:translate-x-1" />
@@ -168,132 +162,112 @@ export default function AdminDashboardPage() {
         ))}
       </div>
 
-      {/* Stats Grid */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {stats.map((stat) => (
-          <Card key={stat.title} variant="elevated" className="card-hover">
-            <CardContent className="pt-6">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-sm text-surface-500">{stat.title}</p>
-                  <p className="mt-2 text-3xl font-bold text-surface-900 dark:text-surface-50">
-                    {stat.value}
-                  </p>
-                  <p className="mt-1 text-sm text-green-600">{stat.change}</p>
-                </div>
-                <div className={`rounded-xl p-3 ${stat.bgColor}`}>
-                  <stat.icon className={`h-6 w-6 ${stat.color}`} />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      {/* Main content grid */}
-      <div className="grid gap-6 lg:grid-cols-3">
-        {/* Upcoming Appointments */}
-        <Card variant="elevated" className="lg:col-span-2">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle>Próximas Citas</CardTitle>
-              <Link
-                href="/admin/appointments"
-                className="text-sm font-medium text-primary-600 hover:text-primary-700"
-              >
-                Ver todas
-              </Link>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {upcomingAppointments.map((appointment) => (
-                <div
-                  key={appointment.id}
-                  className="flex items-center gap-4 rounded-xl border border-surface-200 p-4 transition-colors hover:bg-surface-50 dark:border-surface-800 dark:hover:bg-surface-900"
-                >
-                  <Avatar name={appointment.client} />
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-surface-900 dark:text-surface-50">
-                      {appointment.client}
-                    </p>
-                    <p className="text-sm text-surface-500">{appointment.service}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-medium text-surface-900 dark:text-surface-50">
-                      {appointment.time}
-                    </p>
-                    <p className="text-sm text-surface-500">{appointment.staff}</p>
-                  </div>
-                  <Badge
-                    variant={appointment.status === 'confirmed' ? 'success' : 'warning'}
-                  >
-                    {appointment.status === 'confirmed' ? 'Confirmado' : 'Pendiente'}
-                  </Badge>
-                </div>
-              ))}
-            </div>
+        <Card variant="elevated">
+          <CardContent className="pt-6">
+            <p className="text-sm text-surface-500">Negocios</p>
+            <p className="mt-2 text-3xl font-bold text-surface-900 dark:text-surface-50">{isLoading ? '...' : businesses.length}</p>
           </CardContent>
         </Card>
+        <Card variant="elevated">
+          <CardContent className="pt-6">
+            <p className="text-sm text-surface-500">Servicios</p>
+            <p className="mt-2 text-3xl font-bold text-surface-900 dark:text-surface-50">{isLoading ? '...' : services.length}</p>
+            <p className="mt-1 text-sm text-green-600">{activeServices} activos</p>
+          </CardContent>
+        </Card>
+        <Card variant="elevated">
+          <CardContent className="pt-6">
+            <p className="text-sm text-surface-500">Staff</p>
+            <p className="mt-2 text-3xl font-bold text-surface-900 dark:text-surface-50">{isLoading ? '...' : staff.length}</p>
+            <p className="mt-1 text-sm text-green-600">{activeStaff} activos</p>
+          </CardContent>
+        </Card>
+        <Card variant="elevated">
+          <CardContent className="pt-6">
+            <p className="text-sm text-surface-500">Negocio activo</p>
+            <p className="mt-2 text-lg font-semibold text-surface-900 dark:text-surface-50">
+              {isLoading ? 'Cargando...' : businesses[0]?.name ?? 'Sin negocios'}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
 
-        {/* Top Staff */}
+      <div className="grid gap-6 lg:grid-cols-2">
         <Card variant="elevated">
           <CardHeader>
-            <CardTitle>Top Profesionales</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <HiOutlineBuildingStorefront className="h-5 w-5" />
+              Negocios
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              {topStaff.map((staff, index) => (
-                <div
-                  key={staff.name}
-                  className="flex items-center gap-4 rounded-xl border border-surface-200 p-4 dark:border-surface-800"
-                >
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-primary-500 to-accent-500 text-sm font-bold text-white">
-                    {index + 1}
+            {businesses.length === 0 ? (
+              <p className="text-sm text-surface-500">No hay negocios registrados.</p>
+            ) : (
+              <div className="space-y-3">
+                {businesses.map((business) => (
+                  <div key={business.id} className="rounded-xl border border-surface-200 p-4 dark:border-surface-800">
+                    <p className="font-medium text-surface-900 dark:text-surface-50">{business.name}</p>
+                    <p className="text-sm text-surface-500">/{business.slug}</p>
                   </div>
-                  <Avatar name={staff.name} />
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-surface-900 dark:text-surface-50">
-                      {staff.name}
-                    </p>
-                    <p className="text-sm text-surface-500">
-                      {staff.appointments} citas este mes
-                    </p>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card variant="elevated">
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between">
+              <span>Staff</span>
+              <Link href="/admin/staff" className="text-sm font-medium text-primary-600 hover:text-primary-700">
+                Ver todo
+              </Link>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {staff.length === 0 ? (
+              <p className="text-sm text-surface-500">No hay staff para el negocio seleccionado.</p>
+            ) : (
+              <div className="space-y-3">
+                {staff.slice(0, 5).map((person) => (
+                  <div key={person.id} className="flex items-center gap-3 rounded-xl border border-surface-200 p-3 dark:border-surface-800">
+                    <Avatar name={person.full_name} size="sm" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-medium text-surface-900 dark:text-surface-50">{person.full_name}</p>
+                      <p className="truncate text-xs text-surface-500">{person.email}</p>
+                    </div>
+                    <span className="rounded-full bg-surface-100 px-2 py-1 text-xs text-surface-600 dark:bg-surface-800 dark:text-surface-300">
+                      {person.title ?? 'Sin título'}
+                    </span>
                   </div>
-                  <p className="font-semibold text-green-600">
-                    ${staff.revenue.toLocaleString()}
-                  </p>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
 
-      {/* Quick Actions */}
       <Card variant="gradient">
         <CardContent className="py-6">
           <div className="flex flex-col items-center justify-between gap-4 md:flex-row">
             <div>
               <h3 className="text-lg font-semibold text-surface-900 dark:text-surface-50">
-                ¿Listo para recibir más clientes?
+                Crea tu primer negocio
               </h3>
-              <p className="text-surface-500">
-                Comparte tu link de reservas y deja que los clientes agenden directamente.
-              </p>
+              <p className="text-surface-500">Si aún no tienes uno, puedes crearlo desde tu dashboard.</p>
             </div>
-            <div className="flex gap-3">
-              <button className="rounded-xl bg-primary-600 px-6 py-3 font-medium text-white transition-all hover:bg-primary-700 hover:shadow-glow">
-                Copiar Link
-              </button>
-              <button className="rounded-xl border border-surface-300 bg-white px-6 py-3 font-medium text-surface-700 transition-all hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700">
-                Ver Preview
-              </button>
-            </div>
+            <Link
+              href="/dashboard"
+              className="inline-flex items-center rounded-xl bg-primary-600 px-6 py-3 font-medium text-white transition-all hover:bg-primary-700"
+            >
+              <HiOutlinePlus className="mr-2 h-5 w-5" />
+              Ir a crear negocio
+            </Link>
           </div>
         </CardContent>
       </Card>
     </div>
   );
 }
-

@@ -1,81 +1,69 @@
 'use client';
 
+import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { HiOutlineClock } from 'react-icons/hi2';
 import { Card, CardContent } from '@/presentation/components/ui/card';
 
-// Mock services data
-const services = [
-  {
-    id: '1',
-    name: 'Corte Clásico',
-    description: 'Corte tradicional con tijera y máquina',
-    duration: 30,
-    price: 2500,
-    category: 'haircut',
-    image: null,
-  },
-  {
-    id: '2',
-    name: 'Corte + Barba',
-    description: 'Combo de corte de pelo y arreglo de barba',
-    duration: 45,
-    price: 3500,
-    category: 'combo',
-    image: null,
-  },
-  {
-    id: '3',
-    name: 'Barba Completa',
-    description: 'Perfilado, afeitado y tratamiento con toalla caliente',
-    duration: 25,
-    price: 1800,
-    category: 'beard',
-    image: null,
-  },
-  {
-    id: '4',
-    name: 'Corte Degradado',
-    description: 'Fade moderno con diseño personalizado',
-    duration: 40,
-    price: 3000,
-    category: 'haircut',
-    image: null,
-  },
-  {
-    id: '5',
-    name: 'Coloración',
-    description: 'Tinte completo o mechas',
-    duration: 90,
-    price: 5500,
-    category: 'coloring',
-    image: null,
-  },
-  {
-    id: '6',
-    name: 'Tratamiento Capilar',
-    description: 'Hidratación profunda y masaje',
-    duration: 45,
-    price: 2800,
-    category: 'treatment',
-    image: null,
-  },
-];
+type Business = { id: string; slug: string };
+type Service = {
+  id: string;
+  name: string;
+  description: string | null;
+  duration_minutes: number;
+  price: number;
+  category: 'haircut' | 'beard' | 'coloring' | 'treatment' | 'styling' | 'combo' | 'other';
+};
 
-export default function ServiceSelectionPage({
-  params,
-}: {
-  params: { businessSlug: string };
-}) {
+export default function ServiceSelectionPage({ params }: { params: { businessSlug: string } }) {
   const router = useRouter();
+  const [services, setServices] = React.useState<Service[]>([]);
+  const [isLoading, setIsLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
 
-  const handleServiceSelect = (serviceId: string) => {
-    router.push(`/book/${params.businessSlug}/staff?service=${serviceId}`);
-  };
+  React.useEffect(() => {
+    const load = async () => {
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        const businessesRes = await fetch('/api/businesses', { cache: 'no-store' });
+        const businessesJson = (await businessesRes.json()) as { businesses?: Business[]; error?: string };
+        if (!businessesRes.ok) {
+          setError(businessesJson.error ?? 'No se pudieron cargar los negocios');
+          setIsLoading(false);
+          return;
+        }
+
+        const businessId = (businessesJson.businesses ?? []).find((b) => b.slug === params.businessSlug)?.id;
+        if (!businessId) {
+          setServices([]);
+          setIsLoading(false);
+          return;
+        }
+
+        const servicesRes = await fetch(`/api/services?businessId=${businessId}`, { cache: 'no-store' });
+        const servicesJson = (await servicesRes.json()) as { services?: Service[]; error?: string };
+        if (!servicesRes.ok) {
+          setError(servicesJson.error ?? 'No se pudieron cargar los servicios');
+          setServices([]);
+          setIsLoading(false);
+          return;
+        }
+
+        setServices(servicesJson.services ?? []);
+      } catch {
+        setError('Error de conexión. Intenta nuevamente.');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    void load();
+  }, [params.businessSlug]);
 
   return (
     <div className="animate-in">
-      {/* Progress indicator */}
       <div className="mb-8">
         <div className="flex items-center justify-between text-sm">
           <span className="font-medium text-primary-600">1. Servicio</span>
@@ -88,66 +76,46 @@ export default function ServiceSelectionPage({
         </div>
       </div>
 
-      {/* Header */}
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-surface-900 dark:text-surface-50">
-          Elige un servicio
-        </h1>
-        <p className="mt-1 text-surface-500">
-          Selecciona el servicio que deseas reservar
-        </p>
+        <h1 className="text-2xl font-bold text-surface-900 dark:text-surface-50">Elige un servicio</h1>
+        <p className="mt-1 text-surface-500">Datos consumidos desde `/api/services`.</p>
       </div>
 
-      {/* Services grid */}
-      <div className="grid gap-4 sm:grid-cols-2">
-        {services.map((service) => (
-          <Card
-            key={service.id}
-            variant="interactive"
-            padding="none"
-            className="overflow-hidden"
-            onClick={() => handleServiceSelect(service.id)}
-          >
-            <CardContent className="p-0">
-              {/* Service image placeholder */}
-              <div className="aspect-video bg-gradient-to-br from-primary-100 to-primary-200 dark:from-primary-900/30 dark:to-primary-800/30">
-                <div className="flex h-full items-center justify-center">
-                  <span className="text-4xl">
-                    {service.category === 'haircut' && '💇‍♂️'}
-                    {service.category === 'beard' && '🧔'}
-                    {service.category === 'combo' && '✨'}
-                    {service.category === 'coloring' && '🎨'}
-                    {service.category === 'treatment' && '💆‍♂️'}
-                  </span>
-                </div>
-              </div>
+      {error && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
 
-              {/* Service info */}
-              <div className="p-4">
-                <h3 className="font-semibold text-surface-900 dark:text-surface-50">
-                  {service.name}
-                </h3>
-                <p className="mt-1 text-sm text-surface-500 line-clamp-2">
-                  {service.description}
-                </p>
-
+      {isLoading ? (
+        <p className="text-surface-500">Cargando servicios...</p>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2">
+          {services.map((service) => (
+            <Card
+              key={service.id}
+              variant="interactive"
+              padding="none"
+              className="overflow-hidden"
+              onClick={() => router.push(`/book/${params.businessSlug}/staff?service=${service.id}`)}
+            >
+              <CardContent className="p-4">
+                <h3 className="font-semibold text-surface-900 dark:text-surface-50">{service.name}</h3>
+                <p className="mt-1 text-sm text-surface-500 line-clamp-2">{service.description ?? 'Sin descripción'}</p>
                 <div className="mt-4 flex items-center justify-between">
-                  <div className="flex items-center gap-4 text-sm text-surface-500">
-                    <span className="flex items-center gap-1">
-                      <HiOutlineClock className="h-4 w-4" />
-                      {service.duration} min
-                    </span>
-                  </div>
-                  <span className="font-semibold text-primary-600">
-                    ${service.price.toLocaleString()}
+                  <span className="flex items-center gap-1 text-sm text-surface-500">
+                    <HiOutlineClock className="h-4 w-4" />
+                    {service.duration_minutes} min
                   </span>
+                  <span className="font-semibold text-primary-600">${(service.price / 100).toLocaleString()}</span>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {!isLoading && services.length === 0 && (
+        <div className="rounded-xl border border-surface-200 bg-white p-6 text-center text-surface-500 dark:border-surface-800 dark:bg-surface-900">
+          No hay servicios disponibles para este negocio.
+        </div>
+      )}
     </div>
   );
 }
-

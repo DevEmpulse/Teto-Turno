@@ -1,0 +1,149 @@
+# TeTo API Endpoints
+
+Base URL local: `http://localhost:3000`
+
+## Auth
+
+### POST `/api/auth/login`
+- URL: http://localhost:3000/api/auth/login
+- Acción: inicia sesión con email y password (Supabase Auth).
+- Body JSON:
+```json
+{
+  "email": "user@example.com",
+  "password": "TuPassword123!"
+}
+```
+- Respuesta esperada: `200` con mensaje de sesión iniciada, `401` si credenciales inválidas.
+
+### POST `/api/auth/signup`
+- URL: http://localhost:3000/api/auth/signup
+- Acción: registra usuario nuevo y envía verificación por email.
+- Body JSON:
+```json
+{
+  "email": "user@example.com",
+  "password": "TuPassword123!",
+  "first_name": "Juan",
+  "last_name": "Pérez"
+}
+```
+- Respuesta esperada: `200` con mensaje de verificación, `400` en error.
+
+### POST `/api/auth/logout`
+- URL: http://localhost:3000/api/auth/logout
+- Acción: cierra sesión del usuario actual.
+- Respuesta esperada: `200` en éxito, `500` si falla.
+
+### GET `/api/auth/callback`
+- URL base: http://localhost:3000/api/auth/callback
+- Acción: intercambia el `code` de Supabase por sesión y redirige.
+- Query params:
+- `code`: código de auth de Supabase.
+- `next` (opcional): ruta de redirección final (default `/dashboard` en el handler actual).
+- Ejemplo:
+  - http://localhost:3000/api/auth/callback?code=XXXX&next=/admin
+
+## Businesses
+
+### GET `/api/businesses`
+- URL: http://localhost:3000/api/businesses
+- Acción: lista todos los negocios.
+- Respuesta esperada: `200` con `{ businesses: [...] }`.
+
+### POST `/api/businesses`
+- URL: http://localhost:3000/api/businesses
+- Acción: crea un negocio nuevo para el usuario autenticado.
+- Body JSON:
+```json
+{
+  "name": "Barbería Centro",
+  "type": "barbershop",
+  "description": "Sucursal principal"
+}
+```
+- Respuesta esperada: `201` con `{ business: {...} }`, `401` no autorizado, `409` slug duplicado.
+
+## Services
+
+### GET `/api/services?businessId={uuid}`
+- URL ejemplo: http://localhost:3000/api/services?businessId=BUSINESS_UUID
+- Acción: lista servicios de un negocio, ordenados por `sort_order`.
+- Respuesta esperada: `200` con `{ services: [...] }`, `400` query inválida.
+
+### POST `/api/services`
+- URL: http://localhost:3000/api/services
+- Acción: crea un servicio para un negocio (requiere sesión).
+- Body JSON (ejemplo mínimo válido):
+```json
+{
+  "business_id": "BUSINESS_UUID",
+  "name": "Corte + Barba",
+  "category": "combo",
+  "duration_minutes": 45,
+  "price": 3500,
+  "currency": "ARS",
+  "requires_deposit": false
+}
+```
+- Respuesta esperada: `201` con `{ service: {...} }`, `401` no autorizado, `400` validación.
+
+## Staff
+
+### GET `/api/staff?businessId={uuid}`
+- URL ejemplo: http://localhost:3000/api/staff?businessId=BUSINESS_UUID
+- Acción: lista staff desde la vista `staff_with_user` (incluye nombre/email).
+- Respuesta esperada: `200` con `{ staff: [...] }`, `400` query inválida.
+
+### POST `/api/staff`
+- URL: http://localhost:3000/api/staff
+- Acción: crea registro de staff y actualiza rol/business del usuario asociado (requiere sesión).
+- Body JSON (ejemplo):
+```json
+{
+  "user_id": "USER_UUID",
+  "business_id": "BUSINESS_UUID",
+  "role": "staff",
+  "title": "Senior Barber",
+  "status": "active",
+  "color": "#8b5cf6"
+}
+```
+- Respuesta esperada: `201` con `{ staff: {...} }`, `401` no autorizado, `400` validación/duplicado.
+
+## Appointments
+
+### POST `/api/appointments`
+- URL: http://localhost:3000/api/appointments
+- Acción: crea una cita y calcula `end_at` en base a `scheduled_at + duration_minutes`.
+- Body JSON:
+```json
+{
+  "business_id": "BUSINESS_UUID",
+  "staff_id": "STAFF_UUID",
+  "service_id": "SERVICE_UUID",
+  "scheduled_at": "2026-02-10T14:00:00.000Z",
+  "duration_minutes": 45,
+  "price": 3500
+}
+```
+- Respuesta esperada: `201` con `{ appointment: {...} }`, `400` en error.
+
+Nota: actualmente este route expone `POST` (no `GET`) en el código actual.
+
+## Availability
+
+### GET `/api/availability?staffId={uuid}&date={YYYY-MM-DD}&duration={min}`
+- URL ejemplo: http://localhost:3000/api/availability?staffId=STAFF_UUID&date=2026-02-20&duration=45
+- Acción: consulta slots disponibles llamando RPC `get_available_slots` en Supabase.
+- Respuesta esperada: `200` con lista de slots, `400` si faltan parámetros o falla la RPC.
+
+---
+
+## Estado rápido por endpoint
+- Auth: `login`, `signup`, `logout`, `callback`.
+- Negocios: `GET/POST`.
+- Servicios: `GET/POST`.
+- Staff: `GET/POST`.
+- Citas: `POST`.
+- Disponibilidad: `GET`.
