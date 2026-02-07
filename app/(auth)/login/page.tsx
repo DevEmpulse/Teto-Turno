@@ -3,7 +3,12 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { HiOutlineEnvelope, HiOutlineLockClosed, HiOutlineEye, HiOutlineEyeSlash } from 'react-icons/hi2';
+import {
+  HiOutlineEnvelope,
+  HiOutlineLockClosed,
+  HiOutlineEye,
+  HiOutlineEyeSlash,
+} from 'react-icons/hi2';
 import { FcGoogle } from 'react-icons/fc';
 import { Button } from '@/presentation/components/ui/button';
 import { Input } from '@/presentation/components/ui/input';
@@ -12,6 +17,7 @@ export default function LoginPage() {
   const router = useRouter();
   const [showPassword, setShowPassword] = React.useState(false);
   const [isLoading, setIsLoading] = React.useState(false);
+  const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
   const [formData, setFormData] = React.useState({
     email: '',
     password: '',
@@ -20,25 +26,40 @@ export default function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
+    setErrorMessage(null);
 
-    // Simulate login - replace with actual Supabase auth
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: formData.email,
+          password: formData.password,
+        }),
+      });
 
-    // Redirect to admin dashboard
-    router.push('/admin');
-    setIsLoading(false);
+      const result = (await response.json()) as { error?: string };
+      if (!response.ok) {
+        setErrorMessage(result.error ?? 'No se pudo iniciar sesión');
+        return;
+      }
+
+      router.push('/admin');
+    } catch {
+      setErrorMessage('Error de conexión. Intenta nuevamente.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
     <div className="animate-in">
       {/* Logo */}
       <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary-500 to-accent-500">
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-linear-to-br from-primary-500 to-accent-500">
           <span className="text-xl font-bold text-white">T</span>
         </div>
-        <span className="text-2xl font-bold text-surface-900 dark:text-surface-50">
-          Teto
-        </span>
+        <span className="text-2xl font-bold text-surface-900 dark:text-surface-50">Teto</span>
       </div>
 
       {/* Header */}
@@ -48,10 +69,7 @@ export default function LoginPage() {
         </h2>
         <p className="mt-2 text-surface-500">
           ¿No tienes una cuenta?{' '}
-          <Link
-            href="/register"
-            className="font-medium text-primary-600 hover:text-primary-500"
-          >
+          <Link href="/register" className="font-medium text-primary-600 hover:text-primary-500">
             Regístrate gratis
           </Link>
         </p>
@@ -59,6 +77,12 @@ export default function LoginPage() {
 
       {/* Form */}
       <form onSubmit={handleSubmit} className="mt-8 space-y-6">
+        {errorMessage && (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {errorMessage}
+          </div>
+        )}
+
         <div className="space-y-4">
           <div>
             <label
@@ -76,9 +100,7 @@ export default function LoginPage() {
                 required
                 placeholder="tu@email.com"
                 value={formData.email}
-                onChange={(e) =>
-                  setFormData({ ...formData, email: e.target.value })
-                }
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 leftIcon={<HiOutlineEnvelope className="h-5 w-5" />}
               />
             </div>
@@ -100,9 +122,7 @@ export default function LoginPage() {
                 required
                 placeholder="••••••••"
                 value={formData.password}
-                onChange={(e) =>
-                  setFormData({ ...formData, password: e.target.value })
-                }
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                 leftIcon={<HiOutlineLockClosed className="h-5 w-5" />}
                 rightIcon={
                   <button
@@ -152,6 +172,7 @@ export default function LoginPage() {
           size="lg"
           variant="glow"
           isLoading={isLoading}
+          disabled={isLoading}
         >
           Iniciar Sesión
         </Button>
@@ -182,4 +203,3 @@ export default function LoginPage() {
     </div>
   );
 }
-
