@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import {
   HiOutlineCalendar,
@@ -52,6 +52,8 @@ interface SidebarProps {
 
 export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
+  const [isLoggingOut, setIsLoggingOut] = React.useState(false);
 
   const isActive = (href: string) => {
     if (href === '/admin') {
@@ -99,6 +101,31 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       })}
     </div>
   );
+
+  const handleLogout = async () => {
+    if (isLoggingOut) return;
+
+    setIsLoggingOut(true);
+    try {
+      const response = await fetch('/api/auth/logout', {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        const result = (await response.json()) as { error?: string };
+        window.alert(result.error ?? 'No se pudo cerrar sesión');
+        return;
+      }
+
+      onClose();
+      router.replace('/login');
+      router.refresh();
+    } catch {
+      window.alert('Error de conexión. Intenta nuevamente.');
+    } finally {
+      setIsLoggingOut(false);
+    }
+  };
 
   return (
     <>
@@ -157,9 +184,16 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           </div>
 
           {/* Logout */}
-          <button className="mt-3 flex w-full items-center gap-3 rounded-xl px-4 py-3 text-surface-400 transition-colors hover:bg-surface-800 hover:text-white">
+          <button
+            type="button"
+            onClick={handleLogout}
+            disabled={isLoggingOut}
+            className="mt-3 flex w-full items-center gap-3 rounded-xl px-4 py-3 text-surface-400 transition-colors hover:bg-surface-800 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+          >
             <HiOutlineArrowRightOnRectangle className="h-5 w-5" />
-            <span className="font-medium">Cerrar Sesión</span>
+            <span className="font-medium">
+              {isLoggingOut ? 'Cerrando sesión...' : 'Cerrar Sesión'}
+            </span>
           </button>
         </div>
       </aside>
