@@ -64,6 +64,18 @@ Base URL local: `http://localhost:3000`
 ```
 - Respuesta esperada: `201` con `{ business: {...} }`, `401` no autorizado, `409` slug duplicado.
 
+## Public Business
+
+### GET `/api/public/business/{slug}`
+- URL ejemplo: http://localhost:3000/api/public/business/barbera-esparta
+- Acción: obtiene la información pública de un negocio por `slug` exacto, incluyendo relaciones:
+  - `services`
+  - `staff`
+- Respuesta esperada:
+  - `200` con objeto del negocio y sus relaciones.
+  - `404` si el slug no existe.
+  - `500` en error del servidor.
+
 ## Services
 
 ### GET `/api/services?businessId={uuid}`
@@ -170,6 +182,7 @@ Nota: actualmente `/api/appointments` expone `POST` y `/api/appointments/{id}` e
 ## Estado rápido por endpoint
 - Auth: `login`, `signup`, `logout`, `callback`.
 - Negocios: `GET/POST`.
+- Público negocio: `GET /api/public/business/{slug}`.
 - Servicios: `GET/POST`.
 - Staff: `GET/POST`.
 - Citas: `POST`, `PATCH /api/appointments/{id}`.
