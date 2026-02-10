@@ -38,8 +38,10 @@ export async function POST(request: Request) {
     // En producción, podrías usar una librería como 'slugify'
     const slug = name
       .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
       .trim()
-      .replace(/[^\w\s-]/g, '')
+      .replace(/[^a-z0-9\s-]/g, '')
       .replace(/[\s_-]+/g, '-')
       .replace(/^-+|-+$/g, '');
 

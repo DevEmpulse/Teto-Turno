@@ -64,6 +64,18 @@ Base URL local: `http://localhost:3000`
 ```
 - Respuesta esperada: `201` con `{ business: {...} }`, `401` no autorizado, `409` slug duplicado.
 
+## Public Business
+
+### GET `/api/public/business/{slug}`
+- URL ejemplo: http://localhost:3000/api/public/business/barbera-esparta
+- Acción: obtiene la información pública de un negocio por `slug` exacto, incluyendo relaciones:
+  - `services`
+  - `staff`
+- Respuesta esperada:
+  - `200` con objeto del negocio y sus relaciones.
+  - `404` si el slug no existe.
+  - `500` en error del servidor.
+
 ## Services
 
 ### GET `/api/services?businessId={uuid}`
@@ -113,6 +125,42 @@ Base URL local: `http://localhost:3000`
 
 ## Appointments
 
+### GET `/api/appointments?businessId={uuid}`
+- URL ejemplo: http://localhost:3000/api/appointments?businessId=BUSINESS_UUID
+- Acción: lista citas del negocio desde `appointments` con relaciones anidadas (`customers`, `services`, `staff`), ordenadas por `scheduled_at`.
+- Query params aceptados:
+  - `businessId` (recomendado en frontend)
+  - `business_id` (compatibilidad)
+- Respuesta esperada: `200` con `{ appointments: [...] }`, `400` si falta `businessId/business_id`, `500` en error.
+- Estructura real de cada cita (resumen):
+```json
+{
+  "id": "APPOINTMENT_UUID",
+  "scheduled_at": "2026-02-10T14:00:00.000Z",
+  "status": "confirmed",
+  "price": 3500,
+  "duration_minutes": 45,
+  "customers": {
+    "full_name": "Juan Perez",
+    "email": "juan@test.com",
+    "phone": "123456"
+  },
+  "services": {
+    "name": "Corte de Pelo",
+    "price": 3500
+  },
+  "staff": {
+    "title": "Barbero Senior"
+  }
+}
+```
+
+Para frontend (`/admin/appointments`), consumir campos anidados:
+- Cliente: `appointment.customers?.full_name`
+- Servicio: `appointment.services?.name`
+- Staff: `appointment.staff?.title`
+- Manejar `null` seguro (ejemplo: `customers` nulo -> mostrar "Cliente Invitado").
+
 ### POST `/api/appointments`
 - URL: http://localhost:3000/api/appointments
 - Acción: crea una cita y calcula `end_at` en base a `scheduled_at + duration_minutes`.
@@ -129,7 +177,34 @@ Base URL local: `http://localhost:3000`
 ```
 - Respuesta esperada: `201` con `{ appointment: {...} }`, `400` en error.
 
-Nota: actualmente este route expone `POST` (no `GET`) en el código actual.
+### PATCH `/api/appointments/{id}`
+- URL ejemplo: http://localhost:3000/api/appointments/APPOINTMENT_UUID
+- Acción: actualiza una cita existente (estado y/o notas), confiando en RLS para permisos.
+- Comportamiento adicional actual:
+- Si `status = "cancelled"`, el endpoint también setea:
+  - `cancelled_at = now()`
+  - `cancellation_reason = "other"` (el detalle libre queda en `notes`)
+- Body JSON (ejemplos):
+```json
+{
+  "status": "confirmed"
+}
+```
+```json
+{
+  "notes": "Cliente pidió reprogramar si hay demora"
+}
+```
+```json
+{
+  "status": "cancelled",
+  "notes": "Cancelado por solicitud del cliente"
+}
+```
+- Estados permitidos: `pending`, `confirmed`, `cancelled`, `completed`, `no_show`.
+- Respuesta esperada: `200` con `{ appointment: {...} }`, `400` en validación/error de DB, `401` no autorizado.
+
+Nota: actualmente `/api/appointments` expone `POST` y `/api/appointments/{id}` expone `PATCH`.
 
 ## Availability
 
@@ -143,7 +218,8 @@ Nota: actualmente este route expone `POST` (no `GET`) en el código actual.
 ## Estado rápido por endpoint
 - Auth: `login`, `signup`, `logout`, `callback`.
 - Negocios: `GET/POST`.
+- Público negocio: `GET /api/public/business/{slug}`.
 - Servicios: `GET/POST`.
 - Staff: `GET/POST`.
-- Citas: `POST`.
+- Citas: `GET`, `POST`, `PATCH /api/appointments/{id}`.
 - Disponibilidad: `GET`.
