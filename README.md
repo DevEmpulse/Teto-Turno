@@ -125,6 +125,42 @@ Base URL local: `http://localhost:3000`
 
 ## Appointments
 
+### GET `/api/appointments?businessId={uuid}`
+- URL ejemplo: http://localhost:3000/api/appointments?businessId=BUSINESS_UUID
+- Acción: lista citas del negocio desde `appointments` con relaciones anidadas (`customers`, `services`, `staff`), ordenadas por `scheduled_at`.
+- Query params aceptados:
+  - `businessId` (recomendado en frontend)
+  - `business_id` (compatibilidad)
+- Respuesta esperada: `200` con `{ appointments: [...] }`, `400` si falta `businessId/business_id`, `500` en error.
+- Estructura real de cada cita (resumen):
+```json
+{
+  "id": "APPOINTMENT_UUID",
+  "scheduled_at": "2026-02-10T14:00:00.000Z",
+  "status": "confirmed",
+  "price": 3500,
+  "duration_minutes": 45,
+  "customers": {
+    "full_name": "Juan Perez",
+    "email": "juan@test.com",
+    "phone": "123456"
+  },
+  "services": {
+    "name": "Corte de Pelo",
+    "price": 3500
+  },
+  "staff": {
+    "title": "Barbero Senior"
+  }
+}
+```
+
+Para frontend (`/admin/appointments`), consumir campos anidados:
+- Cliente: `appointment.customers?.full_name`
+- Servicio: `appointment.services?.name`
+- Staff: `appointment.staff?.title`
+- Manejar `null` seguro (ejemplo: `customers` nulo -> mostrar "Cliente Invitado").
+
 ### POST `/api/appointments`
 - URL: http://localhost:3000/api/appointments
 - Acción: crea una cita y calcula `end_at` en base a `scheduled_at + duration_minutes`.
@@ -185,5 +221,5 @@ Nota: actualmente `/api/appointments` expone `POST` y `/api/appointments/{id}` e
 - Público negocio: `GET /api/public/business/{slug}`.
 - Servicios: `GET/POST`.
 - Staff: `GET/POST`.
-- Citas: `POST`, `PATCH /api/appointments/{id}`.
+- Citas: `GET`, `POST`, `PATCH /api/appointments/{id}`.
 - Disponibilidad: `GET`.

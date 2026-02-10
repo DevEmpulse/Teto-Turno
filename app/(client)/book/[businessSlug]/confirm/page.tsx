@@ -31,11 +31,7 @@ type PublicBusinessResponse = {
   staff: Staff[];
 };
 
-export default function ConfirmPage({
-  params,
-}: {
-  params: Promise<{ businessSlug: string }>;
-}) {
+export default function ConfirmPage({ params }: { params: Promise<{ businessSlug: string }> }) {
   const { businessSlug } = React.use(params);
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -118,9 +114,9 @@ export default function ConfirmPage({
           scheduled_at: dateIso,
           duration_minutes: selectedService.duration_minutes,
           price: selectedService.price,
-          client_name: formData.name,
-          client_email: formData.email,
-          client_phone: formData.phone,
+          name: formData.name,
+          email: formData.email,
+          phone: formData.phone,
         }),
       });
 

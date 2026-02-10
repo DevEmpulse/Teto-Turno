@@ -15,14 +15,19 @@ type AppointmentApi = {
   id: string;
   scheduled_at: string;
   status: string;
-  client_name?: string | null;
-  client_full_name?: string | null;
-  service_name?: string | null;
-  staff_name?: string | null;
-  staff_full_name?: string | null;
-  client?: { name?: string | null } | null;
-  service?: { name?: string | null } | null;
-  staff?: { name?: string | null } | null;
+  customers?: {
+    full_name?: string | null;
+    email?: string | null;
+    phone?: string | null;
+  } | null;
+  services?: {
+    name?: string | null;
+    duration_minutes?: number | null;
+    price?: number | null;
+  } | null;
+  staff?: {
+    full_name?: string | null;
+  } | null;
 };
 
 function getStatusBadgeVariant(status: string): 'success' | 'warning' | 'danger' | 'secondary' | 'info' {
@@ -46,15 +51,25 @@ function getStatusLabel(status: string): string {
 }
 
 function getClientName(appointment: AppointmentApi): string {
-  return appointment.client_full_name ?? appointment.client_name ?? appointment.client?.name ?? 'Cliente sin nombre';
+  return appointment.customers?.full_name?.trim() || 'Cliente Invitado';
 }
 
 function getServiceName(appointment: AppointmentApi): string {
-  return appointment.service_name ?? appointment.service?.name ?? 'Servicio';
+  return appointment.services?.name?.trim() || 'Servicio no definido';
 }
 
 function getStaffName(appointment: AppointmentApi): string {
-  return appointment.staff_full_name ?? appointment.staff_name ?? appointment.staff?.name ?? 'Profesional';
+  return appointment.staff?.full_name?.trim() || 'Profesional no asignado';
+}
+
+function getClientContact(appointment: AppointmentApi): string | null {
+  const email = appointment.customers?.email?.trim();
+  const phone = appointment.customers?.phone?.trim();
+
+  if (email && phone) return `${email} · ${phone}`;
+  if (email) return email;
+  if (phone) return phone;
+  return null;
 }
 
 function formatFriendlyDate(isoDate: string): string {
@@ -142,11 +157,6 @@ export default function AppointmentsPage() {
     void loadAppointments();
   }, [selectedBusinessId]);
 
-  const todayAppointments = React.useMemo(
-    () => appointments.filter((appointment) => isToday(parseISO(appointment.scheduled_at))),
-    [appointments]
-  );
-
   return (
     <div className="animate-in space-y-6">
       <div>
@@ -188,31 +198,46 @@ export default function AppointmentsPage() {
         <CardContent>
           {isLoading ? (
             <p className="py-8 text-center text-surface-500">Cargando citas...</p>
-          ) : todayAppointments.length === 0 ? (
+          ) : appointments.length === 0 ? (
             <div className="rounded-xl border border-surface-200 bg-surface-50 px-4 py-8 text-center text-surface-600 dark:border-surface-800 dark:bg-surface-900 dark:text-surface-300">
-              Aún no tienes reservas para hoy. ¡Comparte tu link de reserva!
+              Aún no tienes citas registradas para este negocio.
             </div>
           ) : (
             <div className="space-y-3">
-              {todayAppointments.map((appointment) => {
+              {appointments.map((appointment) => {
                 const date = parseISO(appointment.scheduled_at);
+                const clientName = getClientName(appointment);
+                const serviceName = getServiceName(appointment);
+                const staffName = getStaffName(appointment);
+                const clientContact = getClientContact(appointment);
+
                 return (
                   <div
                     key={appointment.id}
-                    className="flex flex-col gap-3 rounded-xl border border-surface-200 px-4 py-3 dark:border-surface-800 sm:flex-row sm:items-center sm:justify-between"
+                    className="flex flex-col gap-4 rounded-xl border border-surface-200 bg-white px-4 py-4 shadow-sm transition-all hover:shadow-md dark:border-surface-800 dark:bg-surface-900 sm:flex-row sm:items-center sm:justify-between"
                   >
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold text-surface-900 dark:text-surface-50">
+                      <p className="text-base font-semibold text-surface-900 dark:text-surface-50">
+                        {clientName}
+                      </p>
+                      {clientContact && (
+                        <p
+                          title={clientContact}
+                          className="truncate text-xs text-surface-500"
+                        >
+                          {clientContact}
+                        </p>
+                      )}
+                      <p className="mt-1 text-sm font-medium text-surface-700 dark:text-surface-200">
                         {formatFriendlyDate(appointment.scheduled_at)}
                       </p>
-                      <p className="truncate text-sm text-surface-600 dark:text-surface-300">
-                        {getClientName(appointment)} · {getServiceName(appointment)} ·{' '}
-                        {getStaffName(appointment)}
+                      <p className="mt-1 truncate text-sm text-surface-500 dark:text-surface-400">
+                        {serviceName} · {staffName}
                       </p>
                     </div>
 
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-surface-700 dark:text-surface-200">
+                      <span className="text-base font-bold text-surface-900 dark:text-surface-50">
                         {format(date, 'HH:mm')} hs
                       </span>
                       <Badge variant={getStatusBadgeVariant(appointment.status)} dot>
