@@ -16,3 +16,5 @@ export type { BadgeProps } from './badge';
 
 export { Avatar, AvatarGroup } from './avatar';
 
+export { Modal } from './modal';
+

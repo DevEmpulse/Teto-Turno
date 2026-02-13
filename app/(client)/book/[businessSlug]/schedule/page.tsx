@@ -205,6 +205,7 @@ export default function SchedulePage({
                       key={day.toISOString()}
                       onClick={() => setSelectedDate(day)}
                       className={cn(
+                        'cursor-pointer',
                         'rounded-xl border px-3 py-2 text-left transition-all',
                         isSelected
                           ? 'border-primary-600 bg-primary-50 text-primary-700 dark:bg-primary-900/20 dark:text-primary-300'
@@ -241,6 +242,7 @@ export default function SchedulePage({
                   key={slot}
                   onClick={() => setSelectedSlot(slot)}
                   className={cn(
+                    'cursor-pointer',
                     'rounded-xl border px-3 py-2 text-sm font-medium transition-all',
                     selectedSlot === slot
                       ? 'border-primary-600 bg-primary-600 text-white'

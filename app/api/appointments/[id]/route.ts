@@ -2,22 +2,26 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createClient } from '@/infrastructure/supabase/server';
 
-// Esquema de validación
-const patchAppointmentSchema = z
-  .object({
-    status: z.enum(['pending', 'confirmed', 'cancelled', 'completed', 'no_show']).optional(),
-    notes: z.string().max(500).nullable().optional(),
-    // Opcional: Podrías agregar aquí cancellation_reason si quisieras enviarlo desde el front
-  })
-  .refine((data) => data.status !== undefined || data.notes !== undefined, {
-    message: 'Debes enviar al menos `status` o `notes`',
-  });
+const uuidSchema = z.string().uuid('ID inválido');
+
+const patchAppointmentSchema = z.object({
+  status: z.enum(['pending', 'confirmed', 'cancelled', 'completed', 'no_show']).optional(),
+  notes: z.string().max(500).nullable().optional(),
+  internal_notes: z.string().max(1000).nullable().optional(),
+  staff_id: uuidSchema.optional(),
+  service_id: uuidSchema.optional(),
+  scheduled_at: z.string().datetime().optional(),
+  duration_minutes: z.number().int().min(5).max(480).optional(),
+  price: z.number().int().min(0).optional(),
+  cancellation_reason: z
+    .enum(['client_request', 'staff_unavailable', 'business_closed', 'schedule_conflict', 'other'])
+    .optional(),
+});
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = await createClient();
 
-  // 1. Verificamos Auth
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -28,8 +32,6 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
   try {
     const body = await request.json();
-
-    // 2. Validamos los datos de entrada con Zod
     const validation = patchAppointmentSchema.safeParse(body);
 
     if (!validation.success) {
@@ -42,42 +44,36 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       );
     }
 
-    const { status, notes } = validation.data;
+    const input = validation.data;
+    const payload: Record<string, unknown> = {};
 
-    // 3. Preparamos el Payload
-    const payload: any = {
-      updated_at: new Date().toISOString(),
-    };
-
-    // Si viene notas, las asignamos al campo general de notas
-    if (notes !== undefined) {
-      payload.notes = notes;
-    }
-
-    // Si viene status, aplicamos la lógica inteligente
-    if (status !== undefined) {
-      payload.status = status;
-
-      // 🔥 CORRECCIÓN CRÍTICA:
-      if (status === 'cancelled') {
+    if (input.notes !== undefined) payload.notes = input.notes;
+    if (input.internal_notes !== undefined) payload.internal_notes = input.internal_notes;
+    if (input.status !== undefined) {
+      payload.status = input.status;
+      if (input.status === 'cancelled') {
         payload.cancelled_at = new Date().toISOString();
-
-        // AQUÍ ESTÁ EL CAMBIO:
-        // No podemos poner texto libre. Debemos usar uno de los valores del ENUM:
-        // 'client_request', 'staff_unavailable', 'business_closed', 'schedule_conflict', 'other'
-
-        // Usamos 'other' por defecto para cumplir con la DB.
-        // El detalle real ("El cliente llamó...") ya se está guardando en payload.notes arriba.
-        payload.cancellation_reason = 'other';
+        payload.cancellation_reason = input.cancellation_reason ?? 'other';
       }
     }
+    if (input.staff_id !== undefined) payload.staff_id = input.staff_id;
+    if (input.service_id !== undefined) payload.service_id = input.service_id;
+    if (input.scheduled_at !== undefined) payload.scheduled_at = input.scheduled_at;
+    if (input.duration_minutes !== undefined) payload.duration_minutes = input.duration_minutes;
+    if (input.price !== undefined) payload.price = input.price;
 
-    // 4. Ejecutamos el Update
+    if (Object.keys(payload).length === 0) {
+      return NextResponse.json(
+        { error: 'Debes enviar al menos un campo para actualizar' },
+        { status: 400 }
+      );
+    }
+
     const { data, error } = await supabase
       .from('appointments')
       .update(payload)
       .eq('id', id)
-      .select()
+      .select('*')
       .single();
 
     if (error) {

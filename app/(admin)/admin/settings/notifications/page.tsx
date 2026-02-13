@@ -182,11 +182,14 @@ export default function NotificationsSettingsPage() {
             <label className="block text-sm font-medium text-surface-700 dark:text-surface-300">
               Tiempo de anticipación
             </label>
-            <select className="mt-1 w-full rounded-xl border border-surface-300 bg-white px-4 py-3 text-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500 dark:border-surface-700 dark:bg-surface-900">
+            <select
+              className="mt-1 w-full rounded-xl border border-surface-300 bg-white px-4 py-3 text-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500 dark:border-surface-700 dark:bg-surface-900"
+              defaultValue="24"
+            >
               <option value="1">1 hora antes</option>
               <option value="2">2 horas antes</option>
               <option value="12">12 horas antes</option>
-              <option value="24" selected>24 horas antes</option>
+              <option value="24">24 horas antes</option>
               <option value="48">48 horas antes</option>
             </select>
           </div>

@@ -22,16 +22,21 @@ export async function GET(request: Request) {
         status,
         price,
         duration_minutes,
+        staff_id,
+        service_id,
         customers (
           full_name,
           email,
           phone
         ),
         services (
+          id,
           name,
-          price
+          price,
+          duration_minutes
         ),
         staff (
+          id,
           title
         )
       `

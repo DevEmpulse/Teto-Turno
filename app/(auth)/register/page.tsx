@@ -237,7 +237,7 @@ export default function RegisterPage() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="hover:text-surface-600"
+                  className="cursor-pointer hover:text-surface-600"
                 >
                   {showPassword ? (
                     <HiOutlineEyeSlash className="h-5 w-5" />
