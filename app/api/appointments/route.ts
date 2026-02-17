@@ -56,7 +56,6 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  // 1. Cliente Normal (solo para ver si el usuario tiene cuenta en la App)
   const supabase = await createServerClient();
   const {
     data: { user },
@@ -72,10 +71,9 @@ export async function POST(request: Request) {
       duration_minutes,
       price,
       notes,
-      // Mapeo de variables (Frontend -> Backend)
-      name: name,
-      email: email,
-      phone: phone,
+      full_name,
+      email,
+      phone,
     } = body;
 
     // Validación básica
@@ -87,23 +85,43 @@ export async function POST(request: Request) {
     const endDate = new Date(startDate.getTime() + duration_minutes * 60000);
 
     // --------------------------------------------------------------------------
-    // INICIO: LÓGICA CRM (Find, Update or Create)
+    // 1. INICIALIZAMOS ADMIN
     // --------------------------------------------------------------------------
-
     if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
       throw new Error('Falta configuración del servidor (SUPABASE_SERVICE_ROLE_KEY)');
     }
 
-    // Cliente Admin para poder escribir en 'customers' sin restricciones
     const supabaseAdmin = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY,
       { auth: { persistSession: false, autoRefreshToken: false } }
     );
 
+    // --------------------------------------------------------------------------
+    // 2. VERIFICACIÓN ANTI-OVERBOOKING
+    // --------------------------------------------------------------------------
+    const { data: conflict } = await supabaseAdmin
+      .from('appointments')
+      .select('id')
+      .eq('staff_id', staff_id)
+      .neq('status', 'cancelled')
+      .lt('scheduled_at', endDate.toISOString())
+      .gt('end_at', startDate.toISOString())
+      .maybeSingle();
+
+    if (conflict) {
+      return NextResponse.json(
+        { error: '¡Uy! Alguien acaba de reservar este horario. Por favor elige otro.' },
+        { status: 409 }
+      );
+    }
+
+    // --------------------------------------------------------------------------
+    // 3. LÓGICA CRM (Limpia y Directa)
+    // --------------------------------------------------------------------------
+
     let customerId = null;
 
-    // PASO A: Buscar si el cliente ya existe (por email)
     if (email) {
       const { data: existingCustomer } = await supabaseAdmin
         .from('customers')
@@ -115,29 +133,30 @@ export async function POST(request: Request) {
       if (existingCustomer) {
         customerId = existingCustomer.id;
 
-        // --- 🚀 LA MEJORA CLAVE: ACTUALIZAR DATOS ---
-        // Si ya existe, actualizamos su nombre y teléfono con lo último que escribió
-        if (name || phone) {
+        // ACTUALIZAR DATOS
+        // Usamos las variables directas que coinciden con las columnas
+        if (full_name || phone) {
           await supabaseAdmin
             .from('customers')
             .update({
-              full_name: name, // Actualizamos el nombre (ej: "Agus" -> "Agustín")
-              phone: phone, // Actualizamos el teléfono
+              full_name, // ES6 Shorthand para full_name: full_name
+              phone, // ES6 Shorthand para phone: phone
             })
             .eq('id', customerId);
+
+          console.log(`Datos actualizados para cliente ID: ${customerId}`);
         }
-        // ---------------------------------------------
       }
     }
 
-    // PASO B: Si NO existe, lo creamos desde cero
-    if (!customerId && (name || email)) {
+    // CREAR CLIENTE NUEVO
+    if (!customerId && (full_name || email)) {
       const { data: newCustomer, error: createError } = await supabaseAdmin
         .from('customers')
         .insert([
           {
             business_id,
-            full_name: name || 'Cliente Sin Nombre',
+            full_name: full_name || 'Cliente Sin Nombre',
             email: email || null,
             phone: phone || null,
           },
@@ -151,11 +170,10 @@ export async function POST(request: Request) {
         customerId = newCustomer.id;
       }
     }
-    // --------------------------------------------------------------------------
-    // FIN LÓGICA CRM
-    // --------------------------------------------------------------------------
 
-    // 2. Insertamos la Cita
+    // --------------------------------------------------------------------------
+    // 4. INSERTAR LA CITA
+    // --------------------------------------------------------------------------
     const { data: appointmentData, error: appointmentError } = await supabaseAdmin
       .from('appointments')
       .insert([
@@ -163,8 +181,8 @@ export async function POST(request: Request) {
           business_id,
           staff_id,
           service_id,
-          client_id: user?.id || null, // Usuario App
-          customer_id: customerId, // Ficha CRM (¡Ahora actualizada!)
+          client_id: user?.id || null,
+          customer_id: customerId,
           scheduled_at: startDate.toISOString(),
           end_at: endDate.toISOString(),
           duration_minutes,
