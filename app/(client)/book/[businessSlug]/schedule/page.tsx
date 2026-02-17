@@ -3,7 +3,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { addDays, format } from 'date-fns';
+import { addDays, addMinutes, format, setHours, setMinutes } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { HiOutlineArrowLeft } from 'react-icons/hi2';
 import { Card, CardContent } from '@/presentation/components/ui/card';
@@ -29,16 +29,253 @@ type PublicBusinessResponse = {
   staff: Staff[];
 };
 
+type BusyRange = {
+  start: Date;
+  end: Date;
+};
+
+type SlotItem = {
+  label: string;
+  iso: string;
+  startsAt: Date;
+  endsAt: Date;
+  available: boolean;
+};
+
 type AvailabilitySlot = {
   slot_time?: string;
   slot_datetime?: string;
+  start_at?: string;
+  end_at?: string;
+  scheduled_at?: string;
+  duration_minutes?: number;
 };
 
-function toISOFromDateAndHHMM(date: Date, hhmm: string): string {
-  const [hour, minute] = hhmm.split(':').map(Number);
-  const result = new Date(date);
-  result.setHours(hour ?? 0, minute ?? 0, 0, 0);
-  return result.toISOString();
+type GenerateAvailableSlotsInput = {
+  selectedDate: Date;
+  serviceDuration: number;
+  occupiedRanges: BusyRange[];
+  openingTime?: string;
+  closingTime?: string;
+  intervalMinutes?: number;
+};
+
+function parseHHMM(baseDate: Date, value: string): Date {
+  const [hours, minutes] = value.split(':').map((part) => Number(part));
+  const safeHours = typeof hours === 'number' && Number.isFinite(hours) ? hours : 0;
+  const safeMinutes = typeof minutes === 'number' && Number.isFinite(minutes) ? minutes : 0;
+  const withHours = setHours(baseDate, safeHours);
+  return setMinutes(withHours, safeMinutes);
+}
+
+function overlaps(startA: Date, endA: Date, startB: Date, endB: Date): boolean {
+  return startA < endB && endA > startB;
+}
+
+export function generateAvailableSlots({
+  selectedDate,
+  serviceDuration,
+  occupiedRanges,
+  openingTime = '09:00',
+  closingTime = '18:00',
+  intervalMinutes = 30,
+}: GenerateAvailableSlotsInput): SlotItem[] {
+  if (!serviceDuration || serviceDuration <= 0) return [];
+
+  const dayStart = parseHHMM(selectedDate, openingTime);
+  const dayEnd = parseHHMM(selectedDate, closingTime);
+  const slots: SlotItem[] = [];
+
+  for (
+    let candidateStart = new Date(dayStart);
+    addMinutes(candidateStart, serviceDuration) <= dayEnd;
+    candidateStart = addMinutes(candidateStart, intervalMinutes)
+  ) {
+    const candidateEnd = addMinutes(candidateStart, serviceDuration);
+    const hasCollision = occupiedRanges.some((busy) =>
+      overlaps(candidateStart, candidateEnd, busy.start, busy.end)
+    );
+
+    slots.push({
+      label: format(candidateStart, 'HH:mm'),
+      iso: candidateStart.toISOString(),
+      startsAt: new Date(candidateStart),
+      endsAt: candidateEnd,
+      available: !hasCollision,
+    });
+  }
+
+  return slots;
+}
+
+type TimeSlotPickerProps = {
+  selectedDate: Date;
+  serviceDuration: number;
+  staffId: string | null;
+  selectedSlotIso: string | null;
+  onSelectSlot: (slotIso: string | null) => void;
+};
+
+function TimeSlotPicker({
+  selectedDate,
+  serviceDuration,
+  staffId,
+  selectedSlotIso,
+  onSelectSlot,
+}: TimeSlotPickerProps) {
+  const [slots, setSlots] = React.useState<SlotItem[]>([]);
+  const [isLoading, setIsLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    const loadAvailability = async () => {
+      if (!staffId || !serviceDuration) {
+        setSlots([]);
+        onSelectSlot(null);
+        return;
+      }
+
+      setIsLoading(true);
+      setError(null);
+      onSelectSlot(null);
+
+      try {
+        const dateParam = format(selectedDate, 'yyyy-MM-dd');
+
+        const response = await fetch(
+          `/api/availability?staffId=${staffId}&date=${dateParam}&duration=${serviceDuration}`,
+          { cache: 'no-store' }
+        );
+
+        const result = (await response.json()) as AvailabilitySlot[] | { error?: string };
+
+        if (!response.ok) {
+          const message = Array.isArray(result)
+            ? 'No se pudo cargar disponibilidad'
+            : (result.error ?? 'No se pudo cargar disponibilidad');
+          setError(message);
+          setSlots([]);
+          return;
+        }
+
+        const rows = Array.isArray(result) ? result : [];
+
+        const occupiedRanges: BusyRange[] = rows
+          .map((item) => {
+            if (item.start_at && item.end_at) {
+              const start = new Date(item.start_at);
+              const end = new Date(item.end_at);
+              if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime())) {
+                return { start, end };
+              }
+            }
+
+            if (item.scheduled_at && item.duration_minutes) {
+              const start = new Date(item.scheduled_at);
+              if (Number.isNaN(start.getTime())) return null;
+              return { start, end: addMinutes(start, item.duration_minutes) };
+            }
+
+            return null;
+          })
+          .filter((range): range is BusyRange => range !== null);
+
+        const backendAvailableSet = new Set(
+          rows
+            .map((item) => {
+              if (item.slot_time) return item.slot_time.slice(0, 5);
+              if (item.slot_datetime) {
+                const date = new Date(item.slot_datetime);
+                if (!Number.isNaN(date.getTime())) return format(date, 'HH:mm');
+              }
+              return null;
+            })
+            .filter((time): time is string => Boolean(time))
+        );
+
+        const computedSlots = generateAvailableSlots({
+          selectedDate,
+          serviceDuration,
+          occupiedRanges,
+          openingTime: '09:00',
+          closingTime: '18:00',
+          intervalMinutes: 30,
+        });
+
+        const normalizedSlots =
+          backendAvailableSet.size > 0
+            ? computedSlots.map((slot) => ({
+                ...slot,
+                available: slot.available && backendAvailableSet.has(slot.label),
+              }))
+            : computedSlots;
+
+        setSlots(normalizedSlots);
+      } catch {
+        setError('Error de conexión. Intenta nuevamente.');
+        setSlots([]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    void loadAvailability();
+  }, [onSelectSlot, selectedDate, serviceDuration, staffId]);
+
+  const availableCount = slots.filter((slot) => slot.available).length;
+
+  if (isLoading) {
+    return (
+      <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+        {Array.from({ length: 8 }).map((_, index) => (
+          <div
+            key={`slot-skeleton-${index}`}
+            className="h-10 animate-pulse rounded-xl border border-surface-200 bg-surface-100 dark:border-surface-700 dark:bg-surface-800"
+          />
+        ))}
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        {error}
+      </div>
+    );
+  }
+
+  if (slots.length === 0 || availableCount === 0) {
+    return (
+      <p className="text-sm text-surface-500">No hay turnos disponibles para esta fecha.</p>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+      {slots.map((slot) => {
+        const isSelected = selectedSlotIso === slot.iso;
+
+        return (
+          <button
+            key={slot.iso}
+            type="button"
+            disabled={!slot.available}
+            onClick={() => onSelectSlot(slot.iso)}
+            className={cn(
+              'rounded-xl border px-3 py-2 text-sm font-medium transition-all',
+              slot.available
+                ? 'cursor-pointer border-surface-200 hover:border-primary-300 dark:border-surface-700'
+                : 'cursor-not-allowed border-surface-200 bg-surface-100 text-surface-400 dark:border-surface-700 dark:bg-surface-900 dark:text-surface-600',
+              isSelected && slot.available && 'border-primary-600 bg-primary-600 text-white hover:border-primary-600'
+            )}
+          >
+            {slot.label}
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 export default function SchedulePage({
@@ -54,10 +291,8 @@ export default function SchedulePage({
 
   const [business, setBusiness] = React.useState<PublicBusinessResponse | null>(null);
   const [selectedDate, setSelectedDate] = React.useState<Date>(new Date());
-  const [slots, setSlots] = React.useState<string[]>([]);
-  const [selectedSlot, setSelectedSlot] = React.useState<string | null>(null);
+  const [selectedSlotIso, setSelectedSlotIso] = React.useState<string | null>(null);
   const [isLoadingBusiness, setIsLoadingBusiness] = React.useState(true);
-  const [isLoadingSlots, setIsLoadingSlots] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   const selectedService = business?.services.find((service) => service.id === serviceId) ?? null;
@@ -91,63 +326,13 @@ export default function SchedulePage({
     void loadBusiness();
   }, [businessSlug]);
 
-  React.useEffect(() => {
-    const loadAvailability = async () => {
-      if (!effectiveStaffId || !selectedService) {
-        setSlots([]);
-        return;
-      }
-
-      setIsLoadingSlots(true);
-      setError(null);
-      setSelectedSlot(null);
-
-      try {
-        const dateParam = format(selectedDate, 'yyyy-MM-dd');
-        const response = await fetch(
-          `/api/availability?staffId=${effectiveStaffId}&date=${dateParam}&duration=${selectedService.duration_minutes}`,
-          { cache: 'no-store' }
-        );
-
-        const result = (await response.json()) as AvailabilitySlot[] | { error?: string };
-
-        if (!response.ok) {
-          const errorMessage = Array.isArray(result)
-            ? 'No se pudo cargar disponibilidad'
-            : (result.error ?? 'No se pudo cargar disponibilidad');
-          setError(errorMessage);
-          setSlots([]);
-          return;
-        }
-
-        const fetchedSlots = (result as AvailabilitySlot[])
-          .map((slot) => {
-            if (slot.slot_time) return slot.slot_time.slice(0, 5);
-            if (slot.slot_datetime) return format(new Date(slot.slot_datetime), 'HH:mm');
-            return '';
-          })
-          .filter(Boolean);
-
-        setSlots(fetchedSlots);
-      } catch {
-        setError('Error de conexión. Intenta nuevamente.');
-        setSlots([]);
-      } finally {
-        setIsLoadingSlots(false);
-      }
-    };
-
-    void loadAvailability();
-  }, [effectiveStaffId, selectedDate, selectedService]);
-
   const next7Days = Array.from({ length: 7 }, (_, index) => addDays(new Date(), index));
 
   const handleContinue = () => {
-    if (!selectedSlot) return;
+    if (!selectedSlotIso) return;
 
-    const selectedDateISO = toISOFromDateAndHHMM(selectedDate, selectedSlot);
     router.push(
-      `/book/${businessSlug}/confirm?serviceId=${serviceId ?? ''}&staffId=${effectiveStaffId ?? ''}&date=${encodeURIComponent(selectedDateISO)}`
+      `/book/${businessSlug}/confirm?serviceId=${serviceId ?? ''}&staffId=${effectiveStaffId ?? ''}&date=${encodeURIComponent(selectedSlotIso)}`
     );
   };
 
@@ -205,7 +390,7 @@ export default function SchedulePage({
                       key={day.toISOString()}
                       onClick={() => setSelectedDate(day)}
                       className={cn(
-                        'rounded-xl border px-3 py-2 text-left transition-all',
+                        'cursor-pointer rounded-xl border px-3 py-2 text-left transition-all',
                         isSelected
                           ? 'border-primary-600 bg-primary-50 text-primary-700 dark:bg-primary-900/20 dark:text-primary-300'
                           : 'border-surface-200 hover:border-primary-300 dark:border-surface-700'
@@ -228,35 +413,18 @@ export default function SchedulePage({
             </div>
           )}
 
-          <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-            {isLoadingSlots ? (
-              <p className="col-span-full text-surface-500">Cargando horarios...</p>
-            ) : slots.length === 0 ? (
-              <p className="col-span-full text-surface-500">
-                No hay horarios disponibles para esta fecha.
-              </p>
-            ) : (
-              slots.map((slot) => (
-                <button
-                  key={slot}
-                  onClick={() => setSelectedSlot(slot)}
-                  className={cn(
-                    'rounded-xl border px-3 py-2 text-sm font-medium transition-all',
-                    selectedSlot === slot
-                      ? 'border-primary-600 bg-primary-600 text-white'
-                      : 'border-surface-200 hover:border-primary-300 dark:border-surface-700'
-                  )}
-                >
-                  {slot}
-                </button>
-              ))
-            )}
-          </div>
+          <TimeSlotPicker
+            selectedDate={selectedDate}
+            serviceDuration={selectedService?.duration_minutes ?? 0}
+            staffId={effectiveStaffId}
+            selectedSlotIso={selectedSlotIso}
+            onSelectSlot={setSelectedSlotIso}
+          />
 
           <Button
             className="mt-6 w-full"
             variant="glow"
-            disabled={!selectedSlot}
+            disabled={!selectedSlotIso}
             onClick={handleContinue}
           >
             Continuar

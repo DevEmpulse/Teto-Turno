@@ -114,7 +114,7 @@ export default function ConfirmPage({ params }: { params: Promise<{ businessSlug
           scheduled_at: dateIso,
           duration_minutes: selectedService.duration_minutes,
           price: selectedService.price,
-          name: formData.name,
+          full_name: formData.name,
           email: formData.email,
           phone: formData.phone,
         }),

@@ -77,7 +77,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
             href={item.href}
             onClick={onClose}
             className={cn(
-              'group flex items-center gap-3 rounded-xl px-4 py-3',
+              'group flex cursor-pointer items-center gap-3 rounded-xl px-4 py-3',
               'transition-all duration-200',
               active
                 ? 'bg-primary-600 text-white shadow-glow'
@@ -155,7 +155,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
             </div>
             <span className="text-xl font-bold tracking-tight">Teto</span>
           </Link>
-          <button onClick={onClose} className="rounded-lg p-1.5 hover:bg-surface-800 lg:hidden">
+          <button onClick={onClose} className="cursor-pointer rounded-lg p-1.5 hover:bg-surface-800 lg:hidden">
             <HiOutlineXMark className="h-5 w-5" />
           </button>
         </div>
@@ -188,7 +188,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
             type="button"
             onClick={handleLogout}
             disabled={isLoggingOut}
-            className="mt-3 flex w-full items-center gap-3 rounded-xl px-4 py-3 text-surface-400 transition-colors hover:bg-surface-800 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+            className="mt-3 flex w-full cursor-pointer items-center gap-3 rounded-xl px-4 py-3 text-surface-400 transition-colors hover:bg-surface-800 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
           >
             <HiOutlineArrowRightOnRectangle className="h-5 w-5" />
             <span className="font-medium">

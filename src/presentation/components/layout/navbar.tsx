@@ -79,7 +79,7 @@ export function Navbar({ onMenuClick }: NavbarProps) {
         <button
           onClick={onMenuClick}
           className={cn(
-            'flex h-10 w-10 items-center justify-center rounded-xl lg:hidden',
+            'flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl lg:hidden',
             'hover:bg-surface-100 dark:hover:bg-surface-800'
           )}
         >
@@ -142,7 +142,7 @@ export function Navbar({ onMenuClick }: NavbarProps) {
         {/* Mobile search button */}
         <button
           className={cn(
-            'flex h-10 w-10 items-center justify-center rounded-xl md:hidden',
+            'flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl md:hidden',
             'hover:bg-surface-100 dark:hover:bg-surface-800'
           )}
         >
@@ -155,7 +155,7 @@ export function Navbar({ onMenuClick }: NavbarProps) {
           <button
             onClick={toggleTheme}
             className={cn(
-              'flex h-10 w-10 items-center justify-center rounded-xl',
+              'flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl',
               'hover:bg-surface-100 dark:hover:bg-surface-800',
               'transition-colors duration-200'
             )}
@@ -170,7 +170,7 @@ export function Navbar({ onMenuClick }: NavbarProps) {
           {/* Notifications */}
           <button
             className={cn(
-              'relative flex h-10 w-10 items-center justify-center rounded-xl',
+              'relative flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl',
               'hover:bg-surface-100 dark:hover:bg-surface-800'
             )}
           >

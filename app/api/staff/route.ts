@@ -10,6 +10,7 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const businessId = searchParams.get('businessId');
+    const workingToday = searchParams.get('workingToday') === 'true';
 
     const businessIdValidation = businessIdSchema.safeParse(businessId);
     if (!businessIdValidation.success) {
@@ -20,6 +21,38 @@ export async function GET(request: Request) {
     }
 
     const supabase = await createClient();
+
+    if (workingToday) {
+      const todayDow = new Date().getDay();
+      const { data: workingStaffIds, error: hoursError } = await supabase
+        .from('staff_working_hours')
+        .select('staff_id')
+        .eq('day_of_week', todayDow)
+        .eq('is_working', true);
+
+      if (hoursError) {
+        return NextResponse.json({ error: hoursError.message }, { status: 500 });
+      }
+
+      const ids = [...new Set((workingStaffIds ?? []).map((r) => r.staff_id))];
+      if (ids.length === 0) {
+        return NextResponse.json({ staff: [] }, { status: 200 });
+      }
+
+      const { data, error } = await supabase
+        .from('staff_with_user')
+        .select('*')
+        .eq('business_id', businessIdValidation.data)
+        .eq('status', 'active')
+        .in('id', ids)
+        .order('sort_order', { ascending: true });
+
+      if (error) {
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+      return NextResponse.json({ staff: data ?? [] }, { status: 200 });
+    }
+
     const { data, error } = await supabase
       .from('staff_with_user')
       .select('*')
