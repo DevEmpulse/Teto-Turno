@@ -3,12 +3,14 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { addDays, addMinutes, format, setHours, setMinutes } from 'date-fns';
+import { addDays, format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { HiOutlineArrowLeft } from 'react-icons/hi2';
 import { Card, CardContent } from '@/presentation/components/ui/card';
 import { Button } from '@/presentation/components/ui/button';
 import { cn } from '@/lib/utils';
+
+// --- TIPOS ---
 
 type Service = {
   id: string;
@@ -29,84 +31,19 @@ type PublicBusinessResponse = {
   staff: Staff[];
 };
 
-type BusyRange = {
-  start: Date;
-  end: Date;
-};
-
 type SlotItem = {
   label: string;
   iso: string;
-  startsAt: Date;
-  endsAt: Date;
   available: boolean;
 };
 
-type AvailabilitySlot = {
-  slot_time?: string;
-  slot_datetime?: string;
-  start_at?: string;
-  end_at?: string;
-  scheduled_at?: string;
-  duration_minutes?: number;
+// Este es el formato exacto que devuelve tu nueva función SQL
+type BackendSlot = {
+  time: string; // ISO String del inicio del turno
+  available: boolean;
 };
 
-type GenerateAvailableSlotsInput = {
-  selectedDate: Date;
-  serviceDuration: number;
-  occupiedRanges: BusyRange[];
-  openingTime?: string;
-  closingTime?: string;
-  intervalMinutes?: number;
-};
-
-function parseHHMM(baseDate: Date, value: string): Date {
-  const [hours, minutes] = value.split(':').map((part) => Number(part));
-  const safeHours = typeof hours === 'number' && Number.isFinite(hours) ? hours : 0;
-  const safeMinutes = typeof minutes === 'number' && Number.isFinite(minutes) ? minutes : 0;
-  const withHours = setHours(baseDate, safeHours);
-  return setMinutes(withHours, safeMinutes);
-}
-
-function overlaps(startA: Date, endA: Date, startB: Date, endB: Date): boolean {
-  return startA < endB && endA > startB;
-}
-
-export function generateAvailableSlots({
-  selectedDate,
-  serviceDuration,
-  occupiedRanges,
-  openingTime = '09:00',
-  closingTime = '18:00',
-  intervalMinutes = 30,
-}: GenerateAvailableSlotsInput): SlotItem[] {
-  if (!serviceDuration || serviceDuration <= 0) return [];
-
-  const dayStart = parseHHMM(selectedDate, openingTime);
-  const dayEnd = parseHHMM(selectedDate, closingTime);
-  const slots: SlotItem[] = [];
-
-  for (
-    let candidateStart = new Date(dayStart);
-    addMinutes(candidateStart, serviceDuration) <= dayEnd;
-    candidateStart = addMinutes(candidateStart, intervalMinutes)
-  ) {
-    const candidateEnd = addMinutes(candidateStart, serviceDuration);
-    const hasCollision = occupiedRanges.some((busy) =>
-      overlaps(candidateStart, candidateEnd, busy.start, busy.end)
-    );
-
-    slots.push({
-      label: format(candidateStart, 'HH:mm'),
-      iso: candidateStart.toISOString(),
-      startsAt: new Date(candidateStart),
-      endsAt: candidateEnd,
-      available: !hasCollision,
-    });
-  }
-
-  return slots;
-}
+// --- COMPONENTE DE SELECCIÓN DE HORARIOS (Simplificado) ---
 
 type TimeSlotPickerProps = {
   selectedDate: Date;
@@ -129,6 +66,7 @@ function TimeSlotPicker({
 
   React.useEffect(() => {
     const loadAvailability = async () => {
+      // Si faltan datos, limpiamos y no hacemos nada
       if (!staffId || !serviceDuration) {
         setSlots([]);
         onSelectSlot(null);
@@ -142,77 +80,35 @@ function TimeSlotPicker({
       try {
         const dateParam = format(selectedDate, 'yyyy-MM-dd');
 
+        // 1. Llamamos a la API (que a su vez llama a tu SQL corregido)
         const response = await fetch(
           `/api/availability?staffId=${staffId}&date=${dateParam}&duration=${serviceDuration}`,
           { cache: 'no-store' }
         );
 
-        const result = (await response.json()) as AvailabilitySlot[] | { error?: string };
+        const result = await response.json();
 
         if (!response.ok) {
-          const message = Array.isArray(result)
-            ? 'No se pudo cargar disponibilidad'
-            : (result.error ?? 'No se pudo cargar disponibilidad');
-          setError(message);
-          setSlots([]);
-          return;
+          throw new Error(result.error || 'Error al cargar disponibilidad');
         }
 
-        const rows = Array.isArray(result) ? result : [];
+        // 2. Mapeo Directo: Lo que viene del backend es la única verdad.
+        // La SQL ya filtró los ocupados, los cancelados y los horarios de cierre.
+        const backendSlots = (result as BackendSlot[]) || [];
 
-        const occupiedRanges: BusyRange[] = rows
-          .map((item) => {
-            if (item.start_at && item.end_at) {
-              const start = new Date(item.start_at);
-              const end = new Date(item.end_at);
-              if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime())) {
-                return { start, end };
-              }
-            }
-
-            if (item.scheduled_at && item.duration_minutes) {
-              const start = new Date(item.scheduled_at);
-              if (Number.isNaN(start.getTime())) return null;
-              return { start, end: addMinutes(start, item.duration_minutes) };
-            }
-
-            return null;
-          })
-          .filter((range): range is BusyRange => range !== null);
-
-        const backendAvailableSet = new Set(
-          rows
-            .map((item) => {
-              if (item.slot_time) return item.slot_time.slice(0, 5);
-              if (item.slot_datetime) {
-                const date = new Date(item.slot_datetime);
-                if (!Number.isNaN(date.getTime())) return format(date, 'HH:mm');
-              }
-              return null;
-            })
-            .filter((time): time is string => Boolean(time))
-        );
-
-        const computedSlots = generateAvailableSlots({
-          selectedDate,
-          serviceDuration,
-          occupiedRanges,
-          openingTime: '09:00',
-          closingTime: '18:00',
-          intervalMinutes: 30,
+        const uiSlots: SlotItem[] = backendSlots.map((item) => {
+          const dateObj = new Date(item.time);
+          return {
+            label: format(dateObj, 'HH:mm'), // Ej: "09:00"
+            iso: item.time, // Ej: "2026-02-17T09:00:00-03:00"
+            available: item.available, // true
+          };
         });
 
-        const normalizedSlots =
-          backendAvailableSet.size > 0
-            ? computedSlots.map((slot) => ({
-                ...slot,
-                available: slot.available && backendAvailableSet.has(slot.label),
-              }))
-            : computedSlots;
-
-        setSlots(normalizedSlots);
-      } catch {
-        setError('Error de conexión. Intenta nuevamente.');
+        setSlots(uiSlots);
+      } catch (err: any) {
+        console.error(err);
+        setError('No se pudo cargar los horarios. Intenta de nuevo.');
         setSlots([]);
       } finally {
         setIsLoading(false);
@@ -220,9 +116,7 @@ function TimeSlotPicker({
     };
 
     void loadAvailability();
-  }, [onSelectSlot, selectedDate, serviceDuration, staffId]);
-
-  const availableCount = slots.filter((slot) => slot.available).length;
+  }, [selectedDate, serviceDuration, staffId]); // Quitamos onSelectSlot de dep para evitar loops
 
   if (isLoading) {
     return (
@@ -245,10 +139,8 @@ function TimeSlotPicker({
     );
   }
 
-  if (slots.length === 0 || availableCount === 0) {
-    return (
-      <p className="text-sm text-surface-500">No hay turnos disponibles para esta fecha.</p>
-    );
+  if (slots.length === 0) {
+    return <p className="text-sm text-surface-500">No hay turnos disponibles para esta fecha.</p>;
   }
 
   return (
@@ -266,8 +158,10 @@ function TimeSlotPicker({
               'rounded-xl border px-3 py-2 text-sm font-medium transition-all',
               slot.available
                 ? 'cursor-pointer border-surface-200 hover:border-primary-300 dark:border-surface-700'
-                : 'cursor-not-allowed border-surface-200 bg-surface-100 text-surface-400 dark:border-surface-700 dark:bg-surface-900 dark:text-surface-600',
-              isSelected && slot.available && 'border-primary-600 bg-primary-600 text-white hover:border-primary-600'
+                : 'cursor-not-allowed border-surface-200 bg-surface-100 text-surface-400 opacity-50', // Opacidad para los no disponibles
+              isSelected &&
+                slot.available &&
+                'border-primary-600 bg-primary-600 text-white hover:border-primary-600'
             )}
           >
             {slot.label}
@@ -278,11 +172,9 @@ function TimeSlotPicker({
   );
 }
 
-export default function SchedulePage({
-  params,
-}: {
-  params: Promise<{ businessSlug: string }>;
-}) {
+// --- PÁGINA PRINCIPAL (Sin cambios lógicos, solo integración) ---
+
+export default function SchedulePage({ params }: { params: Promise<{ businessSlug: string }> }) {
   const { businessSlug } = React.use(params);
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -302,18 +194,11 @@ export default function SchedulePage({
     const loadBusiness = async () => {
       setIsLoadingBusiness(true);
       setError(null);
-
       try {
         const response = await fetch(`/api/public/business/${businessSlug}`, {
           cache: 'no-store',
         });
-
-        if (!response.ok) {
-          const result = (await response.json()) as { error?: string };
-          setError(result.error ?? 'No se pudo cargar el negocio');
-          return;
-        }
-
+        if (!response.ok) throw new Error('Error cargando negocio');
         const result = (await response.json()) as PublicBusinessResponse;
         setBusiness(result);
       } catch {
@@ -322,7 +207,6 @@ export default function SchedulePage({
         setIsLoadingBusiness(false);
       }
     };
-
     void loadBusiness();
   }, [businessSlug]);
 
@@ -330,7 +214,6 @@ export default function SchedulePage({
 
   const handleContinue = () => {
     if (!selectedSlotIso) return;
-
     router.push(
       `/book/${businessSlug}/confirm?serviceId=${serviceId ?? ''}&staffId=${effectiveStaffId ?? ''}&date=${encodeURIComponent(selectedSlotIso)}`
     );
@@ -338,6 +221,8 @@ export default function SchedulePage({
 
   return (
     <div className="animate-in">
+      {/* ... (Todo tu header, pasos y selección de día se mantienen igual) ... */}
+
       <div className="mb-8">
         <div className="flex items-center justify-between text-sm">
           <span className="text-surface-400">1. Servicio</span>
@@ -388,7 +273,10 @@ export default function SchedulePage({
                   return (
                     <button
                       key={day.toISOString()}
-                      onClick={() => setSelectedDate(day)}
+                      onClick={() => {
+                        setSelectedDate(day);
+                        setSelectedSlotIso(null); // Reseteamos selección al cambiar día
+                      }}
                       className={cn(
                         'cursor-pointer rounded-xl border px-3 py-2 text-left transition-all',
                         isSelected
@@ -407,12 +295,7 @@ export default function SchedulePage({
             </CardContent>
           </Card>
 
-          {staffId === 'any' && (
-            <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-              Se buscará disponibilidad con el primer profesional disponible del negocio.
-            </div>
-          )}
-
+          {/* Renderizamos el Picker Simplificado */}
           <TimeSlotPicker
             selectedDate={selectedDate}
             serviceDuration={selectedService?.duration_minutes ?? 0}

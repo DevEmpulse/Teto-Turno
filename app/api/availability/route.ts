@@ -19,7 +19,7 @@ export async function GET(request: Request) {
     p_staff_id: staffId,
     p_date: date,
     p_duration_minutes: parseInt(duration),
-    p_slot_interval: 30, // Intervalo de 30 min por defecto
+    p_slot_interval: parseInt(duration), // Intervalo de 45 min por defecto
   });
 
   if (error) {
